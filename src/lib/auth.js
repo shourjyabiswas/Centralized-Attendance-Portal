@@ -71,6 +71,14 @@ export async function getMyProfile() {
   return { data, error }
 }
 
+// Dev helper to instantly swap roles for testing
+export async function switchDevRole(newRole) {
+  const { user } = await getUser()
+  if (user) {
+    await supabase.from('profiles').update({ role: newRole }).eq('id', user.id)
+  }
+}
+
 // Sign out
 export async function signOut() {
   const { error } = await supabase.auth.signOut()

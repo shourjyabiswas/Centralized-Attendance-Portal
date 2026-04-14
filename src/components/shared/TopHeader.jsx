@@ -1,14 +1,27 @@
 import { useAuth } from '../../hooks/useAuth'
-import { signOut } from '../../lib/auth'
+import { signOut, switchDevRole } from '../../lib/auth'
 import { useNavigate } from 'react-router-dom'
 
 export default function TopHeader({ title }) {
-  const { user } = useAuth()
+  const { user, role } = useAuth()
   const navigate = useNavigate()
 
+  async function handleSwapRole() {
+    const newRole = role === 'student' ? 'teacher' : 'student'
+    await switchDevRole(newRole)
+    localStorage.removeItem('role')
+    window.location.reload()
+  }
+
   async function handleSignOut() {
-    await signOut()
-    navigate('/auth', { replace: true })
+    try {
+      await signOut()
+    } catch (err) {
+      console.error('Sign out error:', err)
+    }
+    localStorage.clear()
+    sessionStorage.clear()
+    window.location.href = '/auth'
   }
 
   const initials = user?.user_metadata?.full_name
@@ -27,17 +40,21 @@ export default function TopHeader({ title }) {
         <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">
           {user?.email}
         </span>
-        <div className="relative group">
-          <button className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center justify-center border border-blue-100 dark:border-blue-900">
-            {initials}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSwapRole}
+            className="text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30 px-3 py-1.5 rounded-lg font-medium transition-colors border border-blue-100 dark:border-blue-900/30"
+          >
+            Dev: Switch to {role === 'student' ? 'Teacher' : 'Student'}
           </button>
-          <div className="absolute right-0 top-10 w-36 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm py-1 hidden group-hover:block z-50">
-            <button
-              onClick={handleSignOut}
-              className="w-full text-left px-4 py-2 text-xs text-red-500 hover:bg-gray-50 dark:hover:bg-gray-700"
-            >
-              Sign out
-            </button>
+          <button
+            onClick={handleSignOut}
+            className="text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 px-3 py-1.5 rounded-lg font-medium transition-colors border border-red-100 dark:border-red-900/30"
+          >
+            Sign out
+          </button>
+          <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center justify-center border border-blue-100 dark:border-blue-900">
+            {initials}
           </div>
         </div>
       </div>
