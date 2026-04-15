@@ -269,4 +269,3 @@ export default function TeacherAttendance() {
     </AppLayout>
   )
 }
-//Keno hoche na commit 

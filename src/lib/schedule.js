@@ -1,78 +1,83 @@
 import { supabase } from './supabase'
-import { getMyStudentProfile } from './profile'
 
-// Upload marks for multiple students in a section
-// marksArray = [{ studentId, marksObtained, maxMarks }]
-export async function uploadExamMarks(classSectionId, examName, marksArray) {
-  const records = marksArray.map((m) => ({
-    class_section_id: classSectionId,
-    student_id: m.studentId,
-    exam_name: examName,
-    marks_obtained: m.marksObtained,
-    max_marks: m.maxMarks,
-  }))
+const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-  const { data, error } = await supabase
-    .from('exam_marks')
-    .upsert(records, { onConflict: 'class_section_id,student_id,exam_name' })
-    .select()
+export async function getMyStudentSchedule() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { data: [], error: new Error('Not logged in') }
 
-  return { data, error }
+    const { data: studentProfile } = await supabase
+        .from('student_profiles')
+        .select('id')
+        .eq('profile_id', user.id)
+        .single()
+
+    if (!studentProfile) return { data: [], error: new Error('No student profile') }
+
+    const { data: enrollments } = await supabase
+        .from('enrollments')
+        .select('class_section_id')
+        .eq('student_id', studentProfile.id)
+
+    if (!enrollments?.length) return { data: [], error: null }
+
+    const sectionIds = enrollments.map((e) => e.class_section_id)
+
+    const { data, error } = await supabase
+        .from('schedules')
+        .select(`*, class_sections (section, courses (name, code))`)
+        .in('class_section_id', sectionIds)
+        .order('start_time', { ascending: true })
+
+    const sorted = data?.sort(
+        (a, b) => DAY_ORDER.indexOf(a.day_of_week) - DAY_ORDER.indexOf(b.day_of_week)
+    )
+
+    return { data: sorted, error }
 }
 
-// Get all exam marks for a specific section
-export async function getMarksForSection(classSectionId) {
-  const { data, error } = await supabase
-    .from('exam_marks')
-    .select(`
-      *,
-      student_profiles (
-        roll_number,
-        profiles ( full_name )
-      )
-    `)
-    .eq('class_section_id', classSectionId)
-    .order('exam_name', { ascending: true })
+export async function getMyTeacherSchedule() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { data: [], error: new Error('Not logged in') }
 
-  return { data, error }
+    const { data: teacherProfile } = await supabase
+        .from('teacher_profiles')
+        .select('id')
+        .eq('profile_id', user.id)
+        .single()
+
+    if (!teacherProfile) return { data: [], error: new Error('No teacher profile') }
+
+    const { data: assignments } = await supabase
+        .from('teacher_assignments')
+        .select('class_section_id')
+        .eq('teacher_id', teacherProfile.id)
+
+    if (!assignments?.length) return { data: [], error: null }
+
+    const sectionIds = assignments.map((a) => a.class_section_id)
+
+    const { data, error } = await supabase
+        .from('schedules')
+        .select(`*, class_sections (section, courses (name, code))`)
+        .in('class_section_id', sectionIds)
+        .order('start_time', { ascending: true })
+
+    const sorted = data?.sort(
+        (a, b) => DAY_ORDER.indexOf(a.day_of_week) - DAY_ORDER.indexOf(b.day_of_week)
+    )
+
+    return { data: sorted, error }
 }
 
-// Get current student's own marks across all sections
-export async function getMyMarks() {
-  const { data: studentProfile } = await getMyStudentProfile()
-  if (!studentProfile) return { data: [], error: new Error('No student profile') }
-
-  const { data, error } = await supabase
-    .from('exam_marks')
-    .select(`
-      *,
-      class_sections (
-        courses ( name, code )
-      )
-    `)
-    .eq('student_id', studentProfile.id)
-    .order('recorded_at', { ascending: false })
-
-  return { data, error }
-}
-
-// Get class average for a specific exam in a section
-export async function getClassAverage(classSectionId, examName) {
-  const { data, error } = await supabase
-    .from('exam_marks')
-    .select('marks_obtained, max_marks')
-    .eq('class_section_id', classSectionId)
-    .eq('exam_name', examName)
-
-  if (error || !data?.length) return { average: 0, error }
-
-  const avg = data.reduce((sum, r) => sum + (r.marks_obtained / r.max_marks) * 100, 0) / data.length
-  return { average: Math.round(avg), error: null }
-}
-
-// Get today's schedule for teacher or student
 export async function getTodaySchedule(role) {
-  // TODO: Fetch real schedule from database (e.g., routines table) 
-  // Returning empty array as fallback to unblock rendering
-  return { data: [], error: null }
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const today = days[new Date().getDay()]
+
+    const { data, error } = role === 'teacher'
+        ? await getMyTeacherSchedule()
+        : await getMyStudentSchedule()
+
+    const todayOnly = data?.filter((s) => s.day_of_week === today) || []
+    return { data: todayOnly, error }
 }
