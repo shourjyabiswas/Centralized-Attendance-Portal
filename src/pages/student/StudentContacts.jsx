@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import { getStudentContacts } from '../../lib/contacts'
 
@@ -6,25 +6,36 @@ export default function StudentContacts() {
   const [contacts, setContacts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const abortRef = useRef(null)
 
   useEffect(() => {
+    const controller = new AbortController()
+    abortRef.current = controller
+
     async function fetchContacts() {
       try {
         setLoading(true)
+        setError(null)
         const res = await getStudentContacts()
+        
+        if (controller.signal.aborted) return
+
         if (res.error) {
-          setError(res.error)
+          setError(res.error.message || res.error || 'Failed to load contacts')
         } else {
-          setContacts(res.data)
+          setContacts(res.data || [])
         }
       } catch (err) {
-        setError('Failed to load contacts')
+        if (controller.signal.aborted) return
+        setError(err.message || 'Failed to load contacts')
         console.error(err)
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     }
     fetchContacts()
+
+    return () => controller.abort()
   }, [])
 
   return (

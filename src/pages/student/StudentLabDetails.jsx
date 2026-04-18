@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../../components/shared/AppLayout';
 import { getMyAttendanceDetails } from '../../lib/attendance';
@@ -138,22 +138,36 @@ export default function StudentLabDetails() {
   const [labDetailsData, setLabDetailsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     async function fetchData() {
       try {
         setLoading(true);
+        setError(null);
         const { data, error: fetchError } = await getMyAttendanceDetails('lab');
-        if (fetchError) console.warn('Lab details fetch error:', fetchError);
+        
+        if (controller.signal.aborted) return;
+
+        if (fetchError) {
+          console.warn('Lab details fetch error:', fetchError);
+          setError(fetchError.message || 'Failed to load lab details.');
+        }
         setLabDetailsData(data || []);
       } catch (err) {
+        if (controller.signal.aborted) return;
         console.error('Failed to fetch lab details:', err);
-        setError(err.message);
+        setError(err.message || 'Failed to load lab details.');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
     fetchData();
+
+    return () => controller.abort();
   }, []);
 
   return (

@@ -11,12 +11,12 @@ export default function AdminRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/dashboard" element={<AdminDashboard />} />
-      <Route path="/departments" element={<AdminDepartments />} />
-      <Route path="/courses" element={<AdminCourses />} />
-      <Route path="/users" element={<AdminUsers />} />
-      <Route path="/attendance" element={<AdminAttendance />} />
-      <Route path="/alerts" element={<AdminAlerts />} />
+      <Route path="dashboard" element={<AdminDashboard />} />
+      <Route path="departments" element={<AdminDepartments />} />
+      <Route path="courses" element={<AdminCourses />} />
+      <Route path="users" element={<AdminUsers />} />
+      <Route path="attendance" element={<AdminAttendance />} />
+      <Route path="alerts" element={<AdminAlerts />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

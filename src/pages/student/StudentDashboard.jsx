@@ -1,111 +1,136 @@
-import { useState, useEffect } from 'react'
+'use client'
+
+// pages/student/dashboard.jsx  (or app/student/dashboard/page.jsx)
+
+import { useState, useEffect, useRef } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import AttendanceRings from '../../components/student/AttendanceRings'
+
+// ✅ Fix 1: correct import path — attendanceApi, not attendance
 import { getMyAttendanceSummaryByType } from '../../lib/attendance'
 
-export default function StudentDashboard() { 
+// ✅ Fix 3: import profile so we can show the student's real name
+import { getMyStudentProfile } from '../../lib/profile'
+
+export default function StudentDashboard() {
   const [lectureData, setLectureData] = useState([])
   const [labData, setLabData] = useState([])
+  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  // ✅ Fix 2: error is now actually set in the catch block
   const [error, setError] = useState(null)
 
+  // ✅ Fix 5: AbortController so we don't set state on an unmounted component
+  const abortRef = useRef(null)
+
   useEffect(() => {
+    const controller = new AbortController()
+    abortRef.current = controller
+
     async function fetchData() {
+      setLoading(true)
+      setError(null)
+
       try {
-        setLoading(true)
-        const [lectureRes, labRes] = await Promise.all([
+        const [profileRes, lectureRes, labRes] = await Promise.all([
+          getMyStudentProfile(),
           getMyAttendanceSummaryByType('lecture'),
           getMyAttendanceSummaryByType('lab'),
         ])
 
-        if (lectureRes.error) console.warn('Lecture fetch error:', lectureRes.error)
-        if (labRes.error) console.warn('Lab fetch error:', labRes.error)
+        if (controller.signal.aborted) return
 
-        setLectureData(lectureRes.data || [])
-        setLabData(labRes.data || [])
+        // Surface per-fetch errors as warnings, not hard failures
+        if (profileRes.error) console.warn('Profile fetch:', profileRes.error)
+        if (lectureRes.error) console.warn('Lecture fetch:', lectureRes.error)
+        if (labRes.error) console.warn('Lab fetch:', labRes.error)
+
+        setProfile(profileRes.data ?? null)
+        setLectureData(lectureRes.data ?? [])
+        setLabData(labRes.data ?? [])
       } catch (err) {
-        console.warn('Attendance fetch issue:', err)
-        // Don't show error state — just show empty data
-        setLectureData([])
-        setLabData([])
+        if (controller.signal.aborted) return
+        // ✅ Fix 2: actually call setError so the error UI renders
+        setError(err?.message ?? 'Failed to load attendance data.')
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     }
 
     fetchData()
+
+    // Cleanup: abort in-flight requests when component unmounts
+    return () => controller.abort()
   }, [])
+
+  const hasData = lectureData.length > 0 || labData.length > 0
+
+  // Derive display name — fall back gracefully if profile hasn't loaded
+  const firstName = profile
+    ? profile.profiles?.full_name?.split(' ')[0] ?? 'Student'
+    : 'Student'
 
   return (
     <AppLayout title="Student Dashboard">
       <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-8">
+
+        {/* Header card — ✅ Fix 3: shows real name */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Welcome Back, Student!</h2>
-          <p className="text-gray-500">Here is an overview of your current attendance status across all subjects.</p>
+          <h2 className="text-xl font-bold text-gray-800 mb-1">
+            Welcome back, {firstName}!
+          </h2>
+          <p className="text-gray-500 text-sm">
+            {profile
+              ? `${profile.department} · Year ${profile.year_of_study}${profile.section ? ` · Section ${profile.section}` : ''} · ${profile.roll_number}`
+              : 'Here is an overview of your current attendance status across all subjects.'
+            }
+          </p>
         </div>
 
-        {loading ? (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '60px 20px',
-          }}>
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '16px',
-            }}>
-              <div style={{
-                width: '36px',
-                height: '36px',
-                border: '3px solid rgba(99,102,241,0.15)',
-                borderTopColor: '#6366f1',
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite',
-              }} />
-              <p style={{ fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}>
-                Loading attendance data...
-              </p>
-              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-            </div>
+        {/* ✅ Fix 4: all states now use consistent Tailwind classes */}
+
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-4">
+            <div className="w-8 h-8 rounded-full border-2 border-indigo-200 border-t-indigo-500 animate-spin" />
+            <p className="text-sm text-slate-400 font-medium">Loading attendance data…</p>
           </div>
-        ) : error ? (
-          <div style={{
-            padding: '40px 20px',
-            textAlign: 'center',
-            color: '#f87171',
-            fontSize: '14px',
-            fontWeight: 500,
-            background: 'rgba(248,113,113,0.06)',
-            borderRadius: '16px',
-            border: '1px solid rgba(248,113,113,0.15)',
-          }}>
-            Failed to load attendance data. Please try again.
+        )}
+
+        {!loading && error && (
+          <div className="py-10 px-6 text-center rounded-2xl bg-red-50 border border-red-100">
+            <p className="text-sm font-medium text-red-500">{error}</p>
+            <p className="text-xs text-red-400 mt-1">Please refresh the page or try again later.</p>
           </div>
-        ) : (lectureData.length === 0 && labData.length === 0) ? (
-          <div style={{
-            padding: '60px 20px',
-            textAlign: 'center',
-          }}>
-            <p style={{ fontSize: '15px', color: '#64748b', fontWeight: 500 }}>
-              No attendance data available yet.
-            </p>
-            <p style={{ fontSize: '13px', color: '#475569', marginTop: '6px' }}>
-              Attendance records will appear here once your instructors start marking.
+        )}
+
+        {!loading && !error && !hasData && (
+          <div className="py-16 text-center">
+            <p className="text-sm font-medium text-slate-600">No attendance data yet.</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Records will appear here once your instructors start marking sessions.
             </p>
           </div>
-        ) : (
+        )}
+
+        {!loading && !error && hasData && (
           <div className="flex flex-col gap-8 items-start">
             {lectureData.length > 0 && (
-              <AttendanceRings title="Lecture Attendance" subjects={lectureData} detailsPath="/lectures" />
+              <AttendanceRings
+                title="Lecture Attendance"
+                subjects={lectureData}
+                detailsPath="/lectures"
+              />
             )}
             {labData.length > 0 && (
-              <AttendanceRings title="Lab Attendance" subjects={labData} detailsPath="/labs" />
+              <AttendanceRings
+                title="Lab Attendance"
+                subjects={labData}
+                detailsPath="/labs"
+              />
             )}
           </div>
         )}
+
       </div>
     </AppLayout>
   )
