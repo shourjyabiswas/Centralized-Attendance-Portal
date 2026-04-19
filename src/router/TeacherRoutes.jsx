@@ -10,11 +10,11 @@ export default function TeacherRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/dashboard" element={<TeacherDashboard />} />
-      <Route path="/courses" element={<TeacherCourses />} />
-      <Route path="/attendance" element={<TeacherAttendance />} />
-      <Route path="/assignments" element={<TeacherAssignments />} />
-      <Route path="/notes" element={<TeacherNotes />} />
+      <Route path="dashboard" element={<TeacherDashboard />} />
+      <Route path="courses" element={<TeacherCourses />} />
+      <Route path="attendance" element={<TeacherAttendance />} />
+      <Route path="assignments" element={<TeacherAssignments />} />
+      <Route path="notes" element={<TeacherNotes />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

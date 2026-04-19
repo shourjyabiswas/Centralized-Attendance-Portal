@@ -1,105 +1,59 @@
-import { supabase } from './supabase'
-import { getMyTeacherProfile } from './profile'
+import { apiFetch } from './api'
 
-// Upload a file to Supabase Storage and save metadata to content_items
+// Upload a file and save metadata via the backend
 export async function uploadContent(classSectionId, file, title, description, type) {
-  const { data: teacherProfile } = await getMyTeacherProfile()
-  if (!teacherProfile) return { data: null, error: new Error('No teacher profile') }
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('classSectionId', classSectionId)
+    formData.append('title', title)
+    formData.append('description', description || '')
+    formData.append('type', type)
 
-  // Upload file to storage
-  const fileExt = file.name.split('.').pop()
-  const filePath = `${classSectionId}/${Date.now()}_${file.name}`
-
-  const { error: uploadError } = await supabase.storage
-    .from(type === 'note' ? 'notes' : 'assignments')
-    .upload(filePath, file)
-
-  if (uploadError) return { data: null, error: uploadError }
-
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from(type === 'note' ? 'notes' : 'assignments')
-    .getPublicUrl(filePath)
-
-  // Save metadata
-  const { data, error } = await supabase
-    .from('content_items')
-    .insert({
-      class_section_id: classSectionId,
-      uploaded_by: teacherProfile.id,
-      type,
-      title,
-      description,
-      file_url: publicUrl,
+    const result = await apiFetch('/api/v1/content/upload', {
+      method: 'POST',
+      body: formData,
+      // Don't set Content-Type — browser sets it with FormData boundary
     })
-    .select()
-    .single()
-
-  return { data, error }
+    return { data: result.data, error: null }
+  } catch (err) {
+    return { data: null, error: err }
+  }
 }
 
 // Get all content items for a class section
 export async function getContentForSection(classSectionId, type = null) {
-  let query = supabase
-    .from('content_items')
-    .select('*')
-    .eq('class_section_id', classSectionId)
-    .order('created_at', { ascending: false })
-
-  if (type) query = query.eq('type', type)
-
-  const { data, error } = await query
-  return { data, error }
+  try {
+    let url = `/api/v1/content/sections/${classSectionId}`
+    if (type) url += `?type=${type}`
+    const result = await apiFetch(url)
+    return { data: result.data, error: null }
+  } catch (err) {
+    return { data: null, error: err }
+  }
 }
 
 // Get all content items across all sections a student is enrolled in
 export async function getContentForStudent(type = null) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { data: [], error: new Error('Not logged in') }
-
-  const { data: enrollments } = await supabase
-    .from('enrollments')
-    .select('class_section_id')
-    .eq('student_id', (await supabase
-      .from('student_profiles')
-      .select('id')
-      .eq('profile_id', user.id)
-      .single()
-    ).data?.id)
-
-  if (!enrollments?.length) return { data: [], error: null }
-
-  const sectionIds = enrollments.map((e) => e.class_section_id)
-
-  let query = supabase
-    .from('content_items')
-    .select(`
-      *,
-      class_sections (
-        courses ( name, code )
-      )
-    `)
-    .in('class_section_id', sectionIds)
-    .order('created_at', { ascending: false })
-
-  if (type) query = query.eq('type', type)
-
-  const { data, error } = await query
-  return { data, error }
+  try {
+    let url = '/api/v1/content/student'
+    if (type) url += `?type=${type}`
+    const result = await apiFetch(url)
+    return { data: result.data, error: null }
+  } catch (err) {
+    return { data: [], error: err }
+  }
 }
 
 // Delete a content item and its file from storage
 export async function deleteContent(contentId, fileUrl, type) {
-  const filePath = fileUrl.split('/').slice(-2).join('/')
-
-  await supabase.storage
-    .from(type === 'note' ? 'notes' : 'assignments')
-    .remove([filePath])
-
-  const { error } = await supabase
-    .from('content_items')
-    .delete()
-    .eq('id', contentId)
-
-  return { error }
+  try {
+    await apiFetch(`/api/v1/content/${contentId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ fileUrl, type }),
+    })
+    return { error: null }
+  } catch (err) {
+    return { error: err }
+  }
 }

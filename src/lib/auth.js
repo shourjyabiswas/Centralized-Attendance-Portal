@@ -1,9 +1,10 @@
 // src/lib/auth.js
 import { supabase } from './supabase'
+import { apiFetch } from './api'
 
 const ALLOWED_DOMAIN = '@heritageit.edu.in'
 
-// Sign in with Google OAuth
+// Sign in with Google OAuth — stays client-side
 export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -36,58 +37,84 @@ export async function handleAuthCallback() {
   return { user: session.user, error: null }
 }
 
-// Get current logged-in user
+// Get current logged-in user — stays client-side (Supabase session)
 export async function getUser() {
   const { data: { user }, error } = await supabase.auth.getUser()
   return { user, error }
 }
 
-// Get current user's role from profiles table
+// Get current user's role from backend API
 export async function getRole() {
   const { user } = await getUser()
   if (!user) return null
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (error || !data) return null
-  return data.role
+  try {
+    const result = await apiFetch('/api/v1/profile/role')
+    return result.data?.role || null
+  } catch {
+    return null
+  }
 }
 
-// Get full profile of current user
+// Get full profile of current user via backend API
 export async function getMyProfile() {
   const { user } = await getUser()
   if (!user) return { data: null, error: new Error('Not logged in') }
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  return { data, error }
+  try {
+    const result = await apiFetch('/api/v1/profile/me')
+    return { data: result.data, error: null }
+  } catch (err) {
+    return { data: null, error: err }
+  }
 }
 
 // Dev helper to instantly swap roles for testing
 export async function switchDevRole(newRole) {
   const { user } = await getUser()
   if (user) {
-    await supabase.from('profiles').update({ role: newRole }).eq('id', user.id)
+    try {
+      await apiFetch('/api/v1/profile/dev-role', {
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole }),
+      })
+    } catch (err) {
+      console.error('switchDevRole error:', err)
+    }
   }
 }
 
-// Sign out
+// Sign out — stays client-side
 export async function signOut() {
   const { error } = await supabase.auth.signOut()
   return { error }
 }
 
-// Listen to auth state changes (used in useAuth.js hook)
+// Listen to auth state changes (used in useAuth.js hook) — stays client-side
 export function onAuthStateChange(callback) {
   return supabase.auth.onAuthStateChange((_event, session) => {
     callback(session)
   })
+}
+
+export async function signInWithEmail(email, password) {
+  if (!email.endsWith(ALLOWED_DOMAIN)) {
+    return { data: null, error: new Error('Only @heritageit.edu.in accounts are allowed.') }
+  }
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  return { data, error }
+}
+
+export async function signUpWithEmail(email, password, fullName) {
+  if (!email.endsWith(ALLOWED_DOMAIN)) {
+    return { data: null, error: new Error('Only @heritageit.edu.in accounts are allowed.') }
+  }
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { full_name: fullName }
+    }
+  })
+  return { data, error }
 }
