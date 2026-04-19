@@ -16,14 +16,13 @@ const YEARS = ['1st', '2nd', '3rd', '4th']
 const SECTIONS = ['A', 'B', 'C', 'D']
 
 export default function OnboardingPage() {
-  const { user, role, loading } = useAuth()
+  const { user, loading } = useAuth()
   const navigate = useNavigate()
 
-  const [step, setStep] = useState(1) // 1 = role select, 2 = details
+  const [checking, setChecking] = useState(true)
+  const [step, setStep] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
-
-  // Form state
   const [selectedRole, setSelectedRole] = useState(null)
   const [fullName, setFullName] = useState('')
   const [department, setDepartment] = useState('')
@@ -32,27 +31,42 @@ export default function OnboardingPage() {
   const [rollNumber, setRollNumber] = useState('')
   const [employeeId, setEmployeeId] = useState('')
 
-  // If already onboarded, redirect
   useEffect(() => {
-    if (!loading && user && role) {
-      navigate('/dashboard', { replace: true })
+    if (loading) return
+    if (!user) {
+      window.location.href = '/auth'
+      return
     }
-    if (!loading && !user) {
-      navigate('/auth', { replace: true })
+
+    async function checkExistingProfile() {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (profile?.role) {
+        // Already onboarded — set localStorage and hard redirect
+        localStorage.setItem('role', profile.role)
+        window.location.href = '/dashboard'
+        return
+      }
+
+      if (user?.user_metadata?.full_name) {
+        setFullName(user.user_metadata.full_name)
+      }
+      setChecking(false)
     }
-    // Pre-fill name from Google
-    if (user?.user_metadata?.full_name) {
-      setFullName(user.user_metadata.full_name)
-    }
-  }, [user, role, loading, navigate])
+
+    checkExistingProfile()
+  }, [user, loading, navigate])
 
   async function handleSubmit() {
+    if (submitting) return
     setError(null)
 
-    // Validation
     if (!fullName.trim()) return setError('Please enter your full name.')
     if (!department) return setError('Please select your department.')
-
     if (selectedRole === 'student') {
       if (!year) return setError('Please select your year.')
       if (!rollNumber.trim()) return setError('Please enter your roll number.')
@@ -64,7 +78,7 @@ export default function OnboardingPage() {
     setSubmitting(true)
 
     try {
-      // 1. Update profiles table with role and name
+      // 1. Update role in profiles
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
@@ -76,48 +90,75 @@ export default function OnboardingPage() {
 
       if (profileError) throw profileError
 
-      // 2. Insert into role-specific table
+      // 2. Insert role-specific profile only if it doesn't exist
       if (selectedRole === 'student') {
-        const { error: studentError } = await supabase
+        const { data: existing } = await supabase
           .from('student_profiles')
-          .insert({
-            profile_id: user.id,
-            year_of_study: year,
-            department,
-            section: section || null,
-            roll_number: rollNumber.trim(),
-          })
-        if (studentError) throw studentError
+          .select('id')
+          .eq('profile_id', user.id)
+          .single()
+
+        if (!existing) {
+          const { error: studentError } = await supabase
+            .from('student_profiles')
+            .insert({
+              profile_id: user.id,
+              year_of_study: year,
+              department,
+              section: section || null,
+              roll_number: rollNumber.trim(),
+            })
+          if (studentError) throw studentError
+        }
       }
 
       if (selectedRole === 'teacher') {
-        const { error: teacherError } = await supabase
+        const { data: existing } = await supabase
           .from('teacher_profiles')
-          .insert({
-            profile_id: user.id,
-            department,
-            employee_id: employeeId.trim(),
-          })
-        if (teacherError) throw teacherError
+          .select('id')
+          .eq('profile_id', user.id)
+          .single()
+
+        if (!existing) {
+          const { error: teacherError } = await supabase
+            .from('teacher_profiles')
+            .insert({
+              profile_id: user.id,
+              department,
+              employee_id: employeeId.trim(),
+            })
+          if (teacherError) throw teacherError
+        }
       }
 
-      // 3. Redirect — role is now set so RoleRouter will pick it up
-      navigate('/dashboard', { replace: true })
+      // 3. Set role in localStorage BEFORE redirect
+      localStorage.setItem('role', selectedRole)
+
+      // 4. Hard redirect — no navigate(), no react-router involvement
+      window.location.href = '/dashboard'
 
     } catch (err) {
+      console.error('Onboarding error:', err)
       setError(err.message || 'Something went wrong. Please try again.')
-    } finally {
       setSubmitting(false)
     }
   }
 
-  if (loading) return null
+  if (loading || checking) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 rounded-full border-2 border-blue-200 dark:border-blue-900 border-t-blue-500 animate-spin" />
+          <p className="text-sm text-gray-400 dark:text-gray-500">Checking account...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-8 flex flex-col gap-6">
 
-        {/* Header */}
         <div>
           <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
             {step === 1 ? 'Welcome! Who are you?' : 'Fill in your details'}
@@ -129,13 +170,11 @@ export default function OnboardingPage() {
           </p>
         </div>
 
-        {/* Step indicator */}
         <div className="flex gap-2">
           <div className={`h-1 flex-1 rounded-full ${step >= 1 ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
           <div className={`h-1 flex-1 rounded-full ${step >= 2 ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
         </div>
 
-        {/* Step 1 — Role selection */}
         {step === 1 && (
           <div className="flex flex-col gap-3">
             {[
@@ -151,15 +190,16 @@ export default function OnboardingPage() {
                     : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
                 }`}
               >
-                <p className={`text-sm font-medium ${selectedRole === r.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                <p className={`text-sm font-medium ${
+                  selectedRole === r.value
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-gray-800 dark:text-gray-200'
+                }`}>
                   {r.label}
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  {r.desc}
-                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{r.desc}</p>
               </button>
             ))}
-
             <button
               onClick={() => setStep(2)}
               disabled={!selectedRole}
@@ -170,15 +210,11 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 2 — Details form */}
         {step === 2 && (
           <div className="flex flex-col gap-4">
 
-            {/* Full name */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                Full name
-              </label>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Full name</label>
               <input
                 type="text"
                 value={fullName}
@@ -188,11 +224,8 @@ export default function OnboardingPage() {
               />
             </div>
 
-            {/* Department */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                Department
-              </label>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Department</label>
               <select
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
@@ -205,15 +238,11 @@ export default function OnboardingPage() {
               </select>
             </div>
 
-            {/* Student-only fields */}
             {selectedRole === 'student' && (
               <>
                 <div className="flex gap-3">
-                  {/* Year */}
                   <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                      Year
-                    </label>
+                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Year</label>
                     <select
                       value={year}
                       onChange={(e) => setYear(e.target.value)}
@@ -225,12 +254,8 @@ export default function OnboardingPage() {
                       ))}
                     </select>
                   </div>
-
-                  {/* Section */}
                   <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                      Section (optional)
-                    </label>
+                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Section (optional)</label>
                     <select
                       value={section}
                       onChange={(e) => setSection(e.target.value)}
@@ -243,12 +268,8 @@ export default function OnboardingPage() {
                     </select>
                   </div>
                 </div>
-
-                {/* Roll number */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                    Roll number
-                  </label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Roll number</label>
                   <input
                     type="text"
                     value={rollNumber}
@@ -260,12 +281,9 @@ export default function OnboardingPage() {
               </>
             )}
 
-            {/* Teacher-only fields */}
             {selectedRole === 'teacher' && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                  Employee ID
-                </label>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Employee ID</label>
                 <input
                   type="text"
                   value={employeeId}
@@ -276,12 +294,8 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* Error */}
-            {error && (
-              <p className="text-xs text-red-500">{error}</p>
-            )}
+            {error && <p className="text-xs text-red-500">{error}</p>}
 
-            {/* Actions */}
             <div className="flex gap-3 mt-2">
               <button
                 onClick={() => { setStep(1); setError(null) }}

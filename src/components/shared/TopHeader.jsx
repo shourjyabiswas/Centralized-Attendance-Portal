@@ -7,9 +7,15 @@ export default function TopHeader({ title }) {
   const navigate = useNavigate()
 
   async function handleSwapRole() {
-    const newRole = role === 'student' ? 'teacher' : 'student'
+    // Cycle through: student → teacher → admin → student
+    let newRole
+    if (role === 'student') newRole = 'teacher'
+    else if (role === 'teacher') newRole = 'admin'
+    else newRole = 'student'
+    
     await switchDevRole(newRole)
-    localStorage.removeItem('role')
+    // Set the new role in localStorage so useAuth has it cached on next init
+    localStorage.setItem('role', newRole)
     window.location.reload()
   }
 
@@ -45,7 +51,7 @@ export default function TopHeader({ title }) {
             onClick={handleSwapRole}
             className="text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30 px-3 py-1.5 rounded-lg font-medium transition-colors border border-blue-100 dark:border-blue-900/30"
           >
-            Dev: Switch to {role === 'student' ? 'Teacher' : 'Student'}
+            Dev: Switch to {role === 'student' ? 'Teacher' : role === 'teacher' ? 'Admin' : 'Student'}
           </button>
           <button
             onClick={handleSignOut}

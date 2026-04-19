@@ -13,11 +13,8 @@ function RoleRouter() {
   const { user, role, loading } = useAuth()
 
   if (loading) return <LoadingScreen />
-
   if (!user) return <Navigate to="/auth" replace />
-
   if (!role) return <Navigate to="/onboarding" replace />
-
   if (role === 'student') return <StudentRoutes />
   if (role === 'teacher') return <TeacherRoutes />
   if (role === 'admin') return <AdminRoutes />

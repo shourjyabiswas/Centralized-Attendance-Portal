@@ -6,6 +6,8 @@ import AdminCourses from '../pages/admin/AdminCourses'
 import AdminUsers from '../pages/admin/AdminUsers'
 import AdminAttendance from '../pages/admin/AdminAttendance'
 import AdminAlerts from '../pages/admin/AdminAlerts'
+import AdminSchedule from '../pages/admin/AdminSchedule'
+import AdminAssignCourses from '../pages/admin/AdminAssignCourses'
 
 export default function AdminRoutes() {
   return (
@@ -17,6 +19,8 @@ export default function AdminRoutes() {
       <Route path="users" element={<AdminUsers />} />
       <Route path="attendance" element={<AdminAttendance />} />
       <Route path="alerts" element={<AdminAlerts />} />
+      <Route path="schedule" element={<AdminSchedule />} />
+      <Route path="assign-courses" element={<AdminAssignCourses />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
