@@ -24,6 +24,12 @@ export default function AdminAssignCourses() {
     }
   }, [selectedTeacher])
 
+  useEffect(() => {
+    if (selectedCourse) {
+      fetchSections()
+    }
+  }, [selectedCourse])
+
   async function fetchTeachers() {
     try {
       const data = await apiFetch('/api/v1/admin/users?role=teacher')
@@ -56,38 +62,36 @@ export default function AdminAssignCourses() {
 
   async function fetchTeacherAssignments() {
     try {
-      const data = await apiFetch(`/api/v1/admin/teacher-assignments?teacherId=${selectedTeacher}`)
-      setAssignments(data.data || [])
-    } catch (err) {
-      console.error('Error fetching assignments:', err)
-    }
+    const data = await apiFetch(
+    `/api/v1/admin/teacher-assignments?teacherId=${selectedTeacher}`
+    )
+    console.log('Fetched assignments:', data.data)
+    setAssignments(data.data || [])
+    setError(null)
+  } catch (err) {
+    setError(err.message)
+    console.error('Error fetching assignments:', err)
+  }
   }
 
-  useEffect(() => {
-    if (selectedCourse) {
-      fetchSections()
-    }
-  }, [selectedCourse])
-
   async function handleAssignCourse() {
-    if (!selectedTeacher || !selectedSection) {
-      setError('Please select both teacher and section')
-      return
-    }
+    if (!selectedTeacher || !selectedSection) return
 
     try {
       setLoading(true)
+
       await apiFetch(`/api/v1/admin/teacher-assignments`, {
-        method: 'POST',
-        body: JSON.stringify({
-          teacherId: selectedTeacher,
-          sectionId: selectedSection,
-        }),
+      method: 'POST',
+      body: JSON.stringify({
+        teacherId: selectedTeacher,
+        sectionId: selectedSection,
+      }),
       })
 
       setSelectedSection('')
       setSelectedCourse('')
       setError(null)
+
       await fetchTeacherAssignments()
     } catch (err) {
       setError(err.message)
@@ -187,18 +191,17 @@ export default function AdminAssignCourses() {
                     <option value="">Select Section</option>
                     {sections.map((section) => (
                       <option key={section.id} value={section.id}>
-                        Section {section.section} (Year {section.yearOfStudy})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <button
-                onClick={handleAssignCourse}
-                disabled={loading || !selectedSection}
-                className="w-full px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
-              >
+            {section.courseCode} - Section {section.section} (Year {section.yearOfStudy})
+           </option>
+          ))}
+         </select>
+        </div>
+        </div>
+        <button
+          onClick={handleAssignCourse}
+                  disabled={loading || !selectedSection}
+                  className="w-full px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+               >
                 {loading ? 'Assigning...' : 'Assign Course'}
               </button>
             </div>
