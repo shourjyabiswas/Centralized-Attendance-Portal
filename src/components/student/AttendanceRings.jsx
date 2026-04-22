@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const CircularProgress = ({ name, percentage, isOverall, color, size = 150, strokeWidth = 14, delay = 0 }) => {
+const CircularProgress = ({ name, percentage, isOverall, color, size = 150, strokeWidth = 14, delay = 0, showIneligible, hasMatchingLecture, isEligibleByLecture }) => {
   const [mounted, setMounted] = useState(false);
   const radius = (size / 2) - strokeWidth;
   const circumference = 2 * Math.PI * radius;
@@ -85,7 +85,7 @@ const CircularProgress = ({ name, percentage, isOverall, color, size = 150, stro
           {name}
         </h4>
         
-        {!isOverall && percentage < 75 && (
+        {!isOverall && showIneligible && hasMatchingLecture && !isEligibleByLecture && percentage < 75 && (
           <span className="text-[10px] uppercase tracking-wider text-[#ef4444] font-bold bg-[#fef2f2] border border-[#fca5a5] px-3 py-1 rounded-full inline-block text-center whitespace-nowrap shadow-sm group-hover:bg-[#ef4444] group-hover:text-white transition-colors duration-300">
             Ineligible
           </span>
@@ -96,7 +96,7 @@ const CircularProgress = ({ name, percentage, isOverall, color, size = 150, stro
 };
 
 
-const AttendanceRings = ({ title, subjects, detailsPath }) => {
+const AttendanceRings = ({ title, subjects, detailsPath, showIneligible = false }) => {
   const navigate = useNavigate();
 
   // calculate overall percentage
@@ -145,6 +145,9 @@ const AttendanceRings = ({ title, subjects, detailsPath }) => {
             size={item.isOverall ? 160 : 120}
             strokeWidth={item.isOverall ? 16 : 12}
             delay={index * 100} // Staggered animation
+            showIneligible={showIneligible}
+            hasMatchingLecture={item.hasMatchingLecture}
+            isEligibleByLecture={item.isEligibleByLecture}
           />
         ))}
       </div>

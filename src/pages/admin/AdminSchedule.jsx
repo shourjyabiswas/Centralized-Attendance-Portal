@@ -128,9 +128,10 @@ export default function AdminSchedule() {
         const startHour = parseInt(timeParts[0].split(':')[0])
         const endHour = timeParts.length > 1 ? parseInt(timeParts[1].split(':')[0]) : startHour + 1
         const sectionInfo = cohort.classSections.find(c => c.id === s.classSectionId) || {}
-        const isSpecial = SPECIAL_BLOCKS.some(sb => sb.courseId === s.courseId)
-        let specialColor = isSpecial ? SPECIAL_BLOCKS.find(sb => sb.courseId === s.courseId).specialColor : null
-        return { tempId: Math.random().toString(36).substr(2, 9), classSectionId: s.classSectionId, courseId: s.courseId, day: s.day, startHour, duration: Math.max(1, endHour - startHour), roomNumber: s.roomNumber, courseCode: s.course?.code, courseName: s.course?.name, teacherName: sectionInfo.teacherName || (isSpecial ? '—' : 'Unknown'), isSpecial, specialColor }
+        const courseCode = (s.courses?.code || s.course?.code || '').trim().toUpperCase()
+        const isSpecial = ['LIB', 'REM', 'LUNCH'].includes(courseCode)
+        let specialColor = isSpecial ? (SPECIAL_BLOCKS.find(sb => sb.code === courseCode)?.specialColor || null) : null
+        return { tempId: Math.random().toString(36).substr(2, 9), classSectionId: s.classSectionId, courseId: s.courseId, day: s.day, startHour, duration: Math.max(1, endHour - startHour), roomNumber: s.roomNumber, courseCode, courseName: s.courses?.name || s.course?.name, teacherName: sectionInfo.teacherName || (isSpecial ? '—' : 'Unknown'), isSpecial, specialColor }
       })
 
       // Deduplicate special blocks (they apply to all sections, so backend returns multiple identical blocks)
@@ -205,20 +206,23 @@ export default function AdminSchedule() {
       const sectionIds = cohort.classSections.map(cs => cs.id)
       let payload = []
       gridSchedules.forEach(s => {
+        const roomToSave = s.isSpecial ? (s.roomNumber || '') : (s.roomNumber || defaultRoom || 'TBA')
         if (s.isSpecial) {
           // Special blocks map to ALL sections in the cohort
           cohort.classSections.forEach(cs => {
             payload.push({
               class_section_id: cs.id, course_id: s.courseId, day: s.day,
               time_slot: `${s.startHour}:00-${s.startHour + s.duration}:00`,
-              room_number: s.roomNumber || defaultRoom || 'TBA'
+              room_number: roomToSave
             })
           })
-        } else if (s.classSectionId) {
+        } else if (s.classSectionId || s.courseId) {
           payload.push({
-            class_section_id: s.classSectionId, course_id: s.courseId, day: s.day,
+            class_section_id: s.classSectionId || null, 
+            course_id: s.courseId, 
+            day: s.day,
             time_slot: `${s.startHour}:00-${s.startHour + s.duration}:00`,
-            room_number: s.roomNumber || defaultRoom || 'TBA'
+            room_number: roomToSave
           })
         }
       })
@@ -239,10 +243,12 @@ export default function AdminSchedule() {
 
   // Build palette items: all courses + special blocks
   const paletteItems = [
-    ...allCourses.map(c => {
-      const cohortInfo = cohortCourseMap[c.id]
-      return { id: cohortInfo?.id || `course-${c.id}`, courseId: c.id, code: c.code, name: c.name, teacherName: cohortInfo?.teacherName || '', isSpecial: false, isCohortCourse: !!cohortInfo, classSectionId: cohortInfo?.id || null }
-    }),
+    ...allCourses
+      .filter(c => !['LIB', 'REM', 'LUNCH'].includes((c.code || '').trim().toUpperCase()))
+      .map(c => {
+        const cohortInfo = cohortCourseMap[c.id]
+        return { id: cohortInfo?.id || `course-${c.id}`, courseId: c.id, code: c.code, name: c.name, teacherName: cohortInfo?.teacherName || '', isSpecial: false, isCohortCourse: !!cohortInfo, classSectionId: cohortInfo?.id || null }
+      }),
     ...SPECIAL_BLOCKS
   ]
 
@@ -408,7 +414,7 @@ export default function AdminSchedule() {
               {/* Special blocks first */}
               <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold px-1 pt-1">Common</p>
               {SPECIAL_BLOCKS.map(sb => (
-                <div key={sb.id} draggable onDragStart={(e) => handleDragStart(e, sb, 'palette')} className={`p-2.5 rounded-xl border-2 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${sb.specialColor}`}>
+                <div key={sb.id} draggable onDragStart={(e) => handleDragStart(e, sb, 'palette')} className={`p-2.5 rounded-xl border-2 cursor-grab active:cursor-grabbing transition-shadow ${sb.specialColor}`}>
                   <div className="font-bold text-xs">{sb.code}</div>
                   <div className="text-[10px] opacity-80">{sb.name}</div>
                 </div>
@@ -416,7 +422,7 @@ export default function AdminSchedule() {
 
               <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold px-1 pt-2">All Courses</p>
               {paletteItems.filter(p => !p.isSpecial).map(item => (
-                <div key={item.id} draggable={item.isCohortCourse} onDragStart={(e) => item.isCohortCourse ? handleDragStart(e, item, 'palette') : e.preventDefault()} className={`p-2.5 rounded-xl border transition-shadow ${item.isCohortCourse ? `cursor-grab active:cursor-grabbing hover:shadow-md ${getCourseColor(item.courseId)}` : 'opacity-40 cursor-not-allowed bg-gray-100 dark:bg-gray-800/30 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-600'}`}>
+                <div key={item.id} draggable onDragStart={(e) => handleDragStart(e, item, 'palette')} className={`p-2.5 rounded-xl border transition-shadow cursor-grab active:cursor-grabbing hover:shadow-md ${item.isCohortCourse ? getCourseColor(item.courseId) : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300'}`}>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-xs">{item.code}</div>
                     {item.isCohortCourse ? <span className="text-[8px] bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded font-bold">ASSIGNED</span> : <span className="text-[8px] px-1.5 py-0.5 rounded font-bold">NOT IN COHORT</span>}
@@ -473,7 +479,7 @@ export default function AdminSchedule() {
 
                       return (
                         <div key={schedule.tempId} draggable onDragStart={(e) => handleDragStart(e, schedule, 'grid')}
-                          className={`absolute top-2 bottom-2 rounded-lg border shadow-sm overflow-visible cursor-grab active:cursor-grabbing transition-all ${colorClass} ${resizing?.tempId === schedule.tempId ? 'z-40 opacity-90' : 'z-20 hover:z-30'}`}
+                          className={`absolute top-2 bottom-2 rounded-lg border overflow-visible cursor-grab active:cursor-grabbing ${schedule.isSpecial ? '' : 'transition-all'} ${colorClass} ${resizing?.tempId === schedule.tempId ? 'z-40 opacity-90' : 'z-20 hover:z-30'}`}
                           style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                           onClick={() => setEditingBlock(schedule.tempId)}
                         >
@@ -499,15 +505,24 @@ export default function AdminSchedule() {
                               <h4 className="font-bold text-sm mb-0.5">{schedule.courseCode}</h4>
                               <p className="text-xs text-gray-500 mb-3">{schedule.courseName}</p>
                               <div className="space-y-2">
-                                <div>
-                                  <label className="text-xs font-medium text-gray-500 block mb-1">Room</label>
-                                  <input type="text" value={schedule.roomNumber} onChange={(e) => setGridSchedules(prev => prev.map(s => s.tempId === schedule.tempId ? { ...s, roomNumber: e.target.value } : s))}
-                                    className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:outline-none focus:border-blue-500" placeholder="e.g. ICT312" />
-                                </div>
-                                <div>
-                                  <label className="text-xs font-medium text-gray-500 block mb-1">Teacher</label>
-                                  <div className="text-sm text-gray-600 dark:text-gray-400">{schedule.teacherName || '—'}</div>
-                                </div>
+                                {schedule.isSpecial ? (
+                                  <div>
+                                    <label className="text-xs font-medium text-gray-500 block mb-1">Room</label>
+                                    <div className="text-sm text-gray-600 dark:text-gray-400 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 italic">Not applicable for special blocks</div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <label className="text-xs font-medium text-gray-500 block mb-1">Room</label>
+                                    <input type="text" value={schedule.roomNumber} onChange={(e) => setGridSchedules(prev => prev.map(s => s.tempId === schedule.tempId ? { ...s, roomNumber: e.target.value } : s))}
+                                      className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:outline-none focus:border-blue-500" placeholder="e.g. ICT312" />
+                                  </div>
+                                )}
+                                {!schedule.isSpecial && (
+                                  <div>
+                                    <label className="text-xs font-medium text-gray-500 block mb-1">Teacher</label>
+                                    <div className="text-sm text-gray-600 dark:text-gray-400">{schedule.teacherName || '—'}</div>
+                                  </div>
+                                )}
                                 <div>
                                   <label className="text-xs font-medium text-gray-500 block mb-1">Time</label>
                                   <div className="text-sm text-gray-600 dark:text-gray-400">{schedule.startHour}:00 – {schedule.startHour + schedule.duration}:00</div>

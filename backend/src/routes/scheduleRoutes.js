@@ -83,15 +83,21 @@ function normalizeSection(value) {
  * for the frontend to consume reliably.
  */
 function normalizeSchedule(s) {
+  const code = (s.courses?.code || s.class_sections?.courses?.code || '').trim().toUpperCase()
+  const isSpecial = ['LIB', 'REM', 'LUNCH'].includes(code)
+  
+  // If special, room must be empty. Otherwise default to 'TBA'.
+  const effectiveRoom = isSpecial ? '' : (s.room_number || 'TBA')
+
   return {
     id: s.id,
     day: normalizeDay(s.day),
     classType: s.class_type || s.classType || null,
     class_type: s.class_type || s.classType || null,
     timeSlot: s.time_slot || '',
-    time_slot: s.time_slot || '',          // keep snake_case for backward compat
-    roomNumber: s.room_number || 'TBA',
-    room_number: s.room_number || 'TBA',   // keep snake_case for backward compat
+    time_slot: s.time_slot || '',
+    roomNumber: effectiveRoom,
+    room_number: effectiveRoom,
     classSectionId: s.class_section_id,
     class_section_id: s.class_section_id,
     courseId: s.course_id,
@@ -114,12 +120,12 @@ async function getCohortSchedulesDirect(supabase, studentProfile) {
     .select(`
       *,
       class_routines!inner(is_active),
-      courses (name, code),
+      courses (name, code, type),
       class_sections!inner (
         section,
         year_of_study,
         department,
-        courses (name, code, semester),
+        courses (name, code, semester, type),
         teacher_assignments(teacher_profiles(profiles(full_name)))
       )
     `)
@@ -449,7 +455,10 @@ router.get('/student', async (req, res) => {
         })
         
         normalized = normalized.map(item => {
-          if (item.class_section_id && sectionTeacherMap[item.class_section_id]) {
+          const code = (item.courses?.code || '').trim().toUpperCase()
+          const isSpecial = ['LIB', 'REM', 'LUNCH'].includes(code)
+
+          if (!isSpecial && item.class_section_id && sectionTeacherMap[item.class_section_id]) {
             return {
               ...item,
               resolved_teacher_name: sectionTeacherMap[item.class_section_id]

@@ -5,9 +5,11 @@ import { apiFetch } from '../../lib/api'
 export default function AdminAssignCourses() {
   const [teachers, setTeachers] = useState([])
   const [sections, setSections] = useState([])
+  const [allCohorts, setAllCohorts] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
   const [selectedTeacher, setSelectedTeacher] = useState('')
   const [selectedSection, setSelectedSection] = useState('')
   const [courses, setCourses] = useState([])
@@ -16,6 +18,7 @@ export default function AdminAssignCourses() {
   useEffect(() => {
     fetchTeachers()
     fetchCourses()
+    fetchCohorts()
   }, [])
 
   useEffect(() => {
@@ -36,14 +39,23 @@ export default function AdminAssignCourses() {
       setTeachers(data.data || [])
     } catch (err) {
       setError(err.message)
-      console.error('Error fetching teachers:', err)
+    }
+  }
+
+  async function fetchCohorts() {
+    try {
+      const data = await apiFetch('/api/v1/admin/cohorts')
+      setAllCohorts(data.data || [])
+    } catch (err) {
+      console.error('Error fetching cohorts:', err)
     }
   }
 
   async function fetchCourses() {
     try {
       const data = await apiFetch('/api/v1/admin/courses')
-      setCourses(data.data || [])
+      const filtered = (data.data || []).filter(c => !['LIB', 'REM', 'LUNCH'].includes((c.code || '').trim().toUpperCase()))
+      setCourses(filtered)
     } catch (err) {
       console.error('Error fetching courses:', err)
     }
@@ -65,12 +77,10 @@ export default function AdminAssignCourses() {
     const data = await apiFetch(
     `/api/v1/admin/teacher-assignments?teacherId=${selectedTeacher}`
     )
-    console.log('Fetched assignments:', data.data)
     setAssignments(data.data || [])
     setError(null)
   } catch (err) {
     setError(err.message)
-    console.error('Error fetching assignments:', err)
   }
   }
 
@@ -79,23 +89,34 @@ export default function AdminAssignCourses() {
 
     try {
       setLoading(true)
+      
+      const isCohort = selectedSection.startsWith('cohort-')
+      const payload = {
+        teacherId: selectedTeacher,
+      }
+
+      if (isCohort) {
+        const cohortIndex = parseInt(selectedSection.replace('cohort-', ''), 10)
+        payload.cohort = allCohorts[cohortIndex]
+        payload.courseId = selectedCourse
+      } else {
+        payload.sectionId = selectedSection
+      }
 
       await apiFetch(`/api/v1/admin/teacher-assignments`, {
-      method: 'POST',
-      body: JSON.stringify({
-        teacherId: selectedTeacher,
-        sectionId: selectedSection,
-      }),
+        method: 'POST',
+        body: JSON.stringify(payload),
       })
 
       setSelectedSection('')
       setSelectedCourse('')
       setError(null)
+      setSuccess('Course assigned to teacher successfully!')
+      setTimeout(() => setSuccess(null), 3000)
 
       await fetchTeacherAssignments()
     } catch (err) {
       setError(err.message)
-      console.error('Error assigning course:', err)
     } finally {
       setLoading(false)
     }
@@ -126,6 +147,12 @@ export default function AdminAssignCourses() {
             Link teachers to course sections
           </p>
         </div>
+
+        {success && (
+          <div className="bg-green-50 dark:bg-green-950/20 border border-green-100 dark:border-green-900/30 rounded-xl px-4 py-3">
+            <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-xl px-4 py-3">
@@ -188,13 +215,49 @@ export default function AdminAssignCourses() {
                     disabled={!selectedCourse}
                     className="w-full mt-2 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                   >
-                    <option value="">Select Section</option>
-                    {sections.map((section) => (
-                      <option key={section.id} value={section.id}>
-            {section.courseCode} - Section {section.section} (Year {section.yearOfStudy})
-           </option>
-          ))}
-         </select>
+                    <option value="">Select Offering</option>
+                    
+                    {sections.length > 0 && (
+                      <optgroup label="Existing Offerings">
+                        {sections.map((section) => (
+                          <option key={section.id} value={section.id}>
+                            Section {section.section} (Year {section.yearOfStudy}) - {section.department}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+
+                    <optgroup label="Available Cohorts (New Offering)">
+                      {allCohorts
+                        .filter(c => {
+                          if (!selectedCourse) return false
+                          const course = courses.find(cc => cc.id === selectedCourse)
+                          if (!course) return false
+                          
+                          const targetYear = Math.ceil((course.semester || 1) / 2)
+                          const deptMatch = c.department.trim().toUpperCase() === course.department.trim().toUpperCase()
+                          const yearMatch = parseInt(c.yearOfStudy, 10) === targetYear
+                          
+                          if (!deptMatch || !yearMatch) return false
+
+                          // Also check if already in existing offerings
+                          return !sections.some(s => 
+                            s.section === c.section && 
+                            s.yearOfStudy === c.yearOfStudy && 
+                            s.department === c.department
+                          )
+                        })
+                        .map((cohort, idx) => {
+                          // Find original index in allCohorts for the value
+                          const originalIdx = allCohorts.findIndex(ac => ac === cohort)
+                          return (
+                            <option key={`cohort-${originalIdx}`} value={`cohort-${originalIdx}`}>
+                              {cohort.label}
+                            </option>
+                          )
+                        })}
+                    </optgroup>
+                  </select>
         </div>
         </div>
         <button

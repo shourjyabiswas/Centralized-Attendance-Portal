@@ -118,7 +118,7 @@ async function getCourseScopedSectionFallbacks(supabase, studentProfile) {
       section,
       year_of_study,
       department,
-      courses!inner ( id, name, code, semester, department )
+      courses!inner ( id, name, code, semester, department, type )
     `)
 
   if (error) {
@@ -197,7 +197,7 @@ async function syncStudentEnrollments(supabase, studentProfile) {
         section,
         year_of_study,
         department,
-        courses ( id, name, code, semester )
+        courses ( id, name, code, semester, type )
       `)
       .eq('department', studentProfile.department)
 
@@ -234,7 +234,7 @@ async function getEffectiveEnrollmentsForStudent(supabase, studentProfile) {
         section,
         year_of_study,
         department,
-        courses ( id, name, code, semester )
+        courses ( id, name, code, semester, type )
       )
     `)
     .eq('student_id', studentProfile.id)
@@ -253,7 +253,7 @@ async function getEffectiveEnrollmentsForStudent(supabase, studentProfile) {
       section,
       year_of_study,
       department,
-      courses ( id, name, code, semester )
+      courses ( id, name, code, semester, type )
     `)
     .eq('department', studentProfile.department)
 
@@ -272,7 +272,7 @@ async function getEffectiveEnrollmentsForStudent(supabase, studentProfile) {
         section,
         year_of_study,
         department,
-        courses ( id, name, code, semester )
+        courses ( id, name, code, semester, type )
       `)
       .eq('department', studentProfile.department)
     candidates = fallback.data || []
@@ -327,6 +327,10 @@ async function buildAttendanceDetails(supabase, studentId, sessionType) {
     const sectionId = enrollment.class_section_id
     const course = enrollment.class_sections?.courses
     if (!sectionId || !course) continue
+    
+    // Filter by type if a specific sessionType is requested
+    const cType = (course.type || 'Lecture').toLowerCase()
+    if (sessionType !== 'all' && sessionType !== cType) continue
 
     if (!subjectMap[sectionId]) {
       subjectMap[sectionId] = {
@@ -676,7 +680,7 @@ router.get('/summary', async (req, res) => {
         attendance_sessions (
           class_section_id,
           class_sections (
-            courses ( name, code )
+            courses ( name, code, type )
           )
         )
       `)

@@ -299,6 +299,7 @@ router.get('/courses', async (req, res) => {
         name,
         department,
         semester,
+        type,
         class_sections (count)
       `)
       .order('department, code')
@@ -313,6 +314,7 @@ router.get('/courses', async (req, res) => {
       name: c.name,
       department: c.department,
       semester: c.semester,
+      type: c.type,
       sectionsCount: c.class_sections?.[0]?.count || 0,
     }))
 
@@ -330,7 +332,7 @@ router.get('/courses', async (req, res) => {
  */
 router.post('/courses', async (req, res) => {
   try {
-    const { code, name, department, semester } = req.body
+    const { code, name, department, semester, type } = req.body
     const supabase = req.supabase
 
     if (!code || !name || !department) {
@@ -346,6 +348,7 @@ router.post('/courses', async (req, res) => {
         name: name.trim(),
         department: department.toUpperCase(),
         semester: semester || 1,
+        type: type || 'Lecture',
       })
       .select()
       .single()
@@ -757,6 +760,43 @@ router.get('/alerts/low-attendance', async (req, res) => {
     return res.json({ data: alerts })
   } catch (err) {
     console.error('GET /admin/alerts/low-attendance error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+/**
+ * GET /api/v1/admin/cohorts
+ * Get all unique cohorts (dept, year, section) from student profiles
+ */
+router.get('/cohorts', async (req, res) => {
+  try {
+    const supabase = req.supabase
+    const { data, error } = await supabase
+      .from('student_profiles')
+      .select('department, year_of_study, section')
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    // Unique by combination
+    const unique = []
+    const seen = new Set()
+    
+    ;(data || []).forEach(s => {
+      const key = `${s.department}-${s.year_of_study}-${s.section}`
+      if (!seen.has(key) && s.department && s.year_of_study && s.section) {
+        seen.add(key)
+        unique.push({
+          department: s.department,
+          yearOfStudy: s.year_of_study,
+          section: s.section,
+          label: `${s.department} Year ${s.year_of_study} Section ${s.section}`
+        })
+      }
+    })
+
+    return res.json({ data: unique.sort((a, b) => a.label.localeCompare(b.label)) })
+  } catch (err) {
+    console.error('GET /admin/cohorts error:', err)
     return res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -1246,13 +1286,70 @@ router.put('/schedules/replace', async (req, res) => {
 
     // 2. Insert new schedules
     if (schedules.length > 0) {
-      const payload = schedules.map(s => ({
-        ...s,
-        routine_id: routineId
-      }))
+      // 2a. Resolve missing class_section_ids
+      // All sectionIds provided belong to the same cohort (dept, year, section).
+      // We need to find or create class_sections for courses that don't have one in this cohort.
+      const { data: refSections, error: refError } = await db
+        .from('class_sections')
+        .select('*')
+        .in('id', sectionIds)
+        .limit(1)
+      
+      if (refError || !refSections?.length) {
+        return res.status(400).json({ error: 'Invalid sectionIds provided' })
+      }
+      
+      const cohort = refSections[0]
+      const processedSchedules = []
+
+      for (let s of schedules) {
+        let finalSectionId = s.class_section_id
+        
+        if (!finalSectionId && s.course_id) {
+          // Check if a section already exists for this course in this cohort
+          const { data: existing } = await db
+            .from('class_sections')
+            .select('id')
+            .eq('course_id', s.course_id)
+            .eq('department', cohort.department)
+            .eq('year_of_study', cohort.year_of_study)
+            .eq('section', cohort.section)
+            .single()
+          
+          if (existing) {
+            finalSectionId = existing.id
+          } else {
+            // Create new class_section
+            const { data: created, error: createError } = await db
+              .from('class_sections')
+              .insert({
+                course_id: s.course_id,
+                department: cohort.department,
+                year_of_study: cohort.year_of_study,
+                section: cohort.section
+              })
+              .select('id')
+              .single()
+            
+            if (createError) {
+              return res.status(400).json({ error: `Failed to create section for course ${s.course_id}: ${createError.message}` })
+            }
+            finalSectionId = created.id
+          }
+        }
+
+        if (finalSectionId) {
+          processedSchedules.push({
+            ...s,
+            class_section_id: finalSectionId,
+            routine_id: routineId
+          })
+        }
+      }
+
       const { data, error: insertError } = await db
         .from('class_schedules')
-        .insert(payload)
+        .insert(processedSchedules)
         .select()
 
       if (insertError) {
@@ -1335,66 +1432,78 @@ router.get('/teacher-assignments', async (req, res) => {
 
 /**
  * POST /api/v1/admin/teacher-assignments
- * Assign a course section to a teacher
- * Body: { teacherId, sectionId }
+ * Link a teacher to a course section (creates section if needed)
  */
 router.post('/teacher-assignments', async (req, res) => {
   try {
-    const { teacherId, sectionId } = req.body
+    const { teacherId, sectionId, courseId, cohort } = req.body
     const supabase = req.supabase
+    const db = supabaseAdmin || supabase
 
-    if (!teacherId || !sectionId) {
-      return res.status(400).json({
-        error: 'teacherId and sectionId are required',
-      })
-    }
+    if (!teacherId) return res.status(400).json({ error: 'teacherId is required' })
 
-    // Get teacher profile
-    const { data: teacherProfile } = await supabase
+    // 1. Resolve teacher
+    const { data: teacher } = await supabase
       .from('teacher_profiles')
       .select('id')
       .eq('profile_id', teacherId)
       .single()
 
-    if (!teacherProfile) {
-      return res.status(400).json({ error: 'Teacher not found' })
+    if (!teacher) return res.status(400).json({ error: 'Teacher not found' })
+
+    let finalSectionId = sectionId
+
+    // 2. If no sectionId, create/find the section using cohort info
+    if (!finalSectionId && courseId && cohort) {
+      const { data: existing } = await db
+        .from('class_sections')
+        .select('id')
+        .eq('course_id', courseId)
+        .eq('department', cohort.department)
+        .eq('year_of_study', cohort.yearOfStudy)
+        .eq('section', cohort.section)
+        .single()
+
+      if (existing) {
+        finalSectionId = existing.id
+      } else {
+        const { data: created, error: createError } = await db
+          .from('class_sections')
+          .insert({
+            course_id: courseId,
+            department: cohort.department,
+            year_of_study: cohort.yearOfStudy,
+            section: cohort.section
+          })
+          .select()
+          .single()
+
+        if (createError) throw createError
+        finalSectionId = created.id
+      }
     }
 
-    // Check if already assigned
-    const { data: existing } = await supabase
-      .from('teacher_assignments')
-      .select('id')
-      .eq('teacher_id', teacherProfile.id)
-      .eq('class_section_id', sectionId)
-      .single()
+    if (!finalSectionId) return res.status(400).json({ error: 'sectionId or cohort+courseId required' })
 
-    if (existing) {
-      return res.status(400).json({ error: 'Teacher already assigned to this section' })
-    }
-
-    // Create assignment
-    const { data, error } = await supabase
+    // 3. Create assignment
+    const { data, error } = await db
       .from('teacher_assignments')
-      .insert({
-        teacher_id: teacherProfile.id,
-        class_section_id: sectionId,
-      })
+      .upsert({
+        teacher_id: teacher.id,
+        class_section_id: finalSectionId,
+      }, { onConflict: 'teacher_id,class_section_id' })
       .select(`
-        id,
+        *,
         class_sections (
-          id,
           section,
           year_of_study,
           department,
-          courses (id, code, name),
-          enrollments (count)
+          courses ( name, code )
         )
       `)
       .single()
 
-    if (error) {
-      return res.status(400).json({ error: error.message })
-    }
+    if (error) return res.status(400).json({ error: error.message })
 
     const section = data.class_sections
     const enriched = {
@@ -1403,13 +1512,13 @@ router.post('/teacher-assignments', async (req, res) => {
       yearOfStudy: section?.year_of_study,
       department: section?.department,
       course: section?.courses,
-      studentsEnrolled: section?.enrollments?.[0]?.count || 0,
+      studentsEnrolled: 0, // Placeholder
     }
 
     return res.status(201).json({ data: enriched })
   } catch (err) {
     console.error('POST /admin/teacher-assignments error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
+    return res.status(500).json({ error: err.message || 'Internal server error' })
   }
 })
 

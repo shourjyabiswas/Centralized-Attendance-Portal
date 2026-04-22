@@ -13,6 +13,20 @@ import { getMyStudentSchedule } from '../../lib/schedule'
 // ✅ Fix 3: import profile so we can show the student's real name
 import { getMyStudentProfile } from '../../lib/profile'
 
+// Helper to link Lab to Lecture by name (Fuzzy matching)
+function isMatchingLecture(lectureName, labName) {
+  const norm = (s) => (s || '').toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .replace('lab', '')
+    .trim()
+  
+  const nl = norm(lectureName)
+  const nb = norm(labName)
+  
+  // Direct match or one contains the other
+  return nl === nb || (nl.length > 5 && nb.includes(nl)) || (nb.length > 5 && nl.includes(nb))
+}
+
 export default function StudentDashboard() {
   const [lectureData, setLectureData] = useState([])
   const [labData, setLabData] = useState([])
@@ -66,10 +80,21 @@ export default function StudentDashboard() {
           percentage: lectureMap.has(subject.code) ? lectureMap.get(subject.code) : 0
         }))
 
-        const finalLabData = baseFromSchedule.lab.map(subject => ({
-          ...subject,
-          percentage: labMap.has(subject.code) ? labMap.get(subject.code) : 0
-        }))
+        const finalLabData = baseFromSchedule.lab.map(subject => {
+          const percentage = labMap.has(subject.code) ? labMap.get(subject.code) : 0
+          
+          // Check for matching lecture
+          const matchingLecture = finalLectureData.find(l => isMatchingLecture(l.name, subject.name))
+          const hasMatchingLecture = !!matchingLecture
+          const isEligibleByLecture = matchingLecture ? matchingLecture.percentage >= 75 : false
+
+          return {
+            ...subject,
+            percentage,
+            hasMatchingLecture,
+            isEligibleByLecture
+          }
+        })
 
         // Schedule is the source of truth for what courses belong to this student.
         // Only fall back to attendance summaries when schedule data is unavailable.
@@ -160,6 +185,7 @@ export default function StudentDashboard() {
                 title="Lab Attendance"
                 subjects={labData}
                 detailsPath="/labs"
+                showIneligible={true}
               />
             )}
           </div>
@@ -175,10 +201,18 @@ function buildZeroAttendanceFromSchedule(scheduleItems) {
   const labMap = new Map()
 
   for (const item of scheduleItems || []) {
-    const code = item?.class_sections?.courses?.code || ''
-    const name = item?.class_sections?.courses?.name || ''
-    const classType = String(item?.classType || item?.class_type || '').toLowerCase()
+    // Highly defensive resolution of the course object
+    const rawCourse = item?.class_sections?.courses || item?.courses
+    const courseObj = Array.isArray(rawCourse) ? rawCourse[0] : rawCourse
+    
+    const code = (courseObj?.code || '').trim()
+    const name = (courseObj?.name || '').trim()
+    
+    // Skip special blocks that don't have attendance
+    if (['LIB', 'REM', 'LUNCH'].includes(code.toUpperCase())) continue
 
+    const courseType = (courseObj?.type || '').toLowerCase().trim()
+    const classType = String(item?.class_type || item?.classType || '').toLowerCase().trim()
     const key = `${code}__${name}`
     const subject = {
       name: name || code || 'Unnamed Subject',
@@ -186,7 +220,14 @@ function buildZeroAttendanceFromSchedule(scheduleItems) {
       percentage: 0,
     }
 
-    const isLab = classType === 'lab' || /\blab\b/i.test(name)
+    // Comprehensive Lab Detection
+    const isLab = 
+      courseType === 'lab' || 
+      classType === 'lab' || 
+      code.toUpperCase().endsWith('L') ||
+      code.toUpperCase().includes('LAB') ||
+      /\blab\b/i.test(name)
+    
     if (isLab) {
       if (!labMap.has(key)) labMap.set(key, subject)
     } else {

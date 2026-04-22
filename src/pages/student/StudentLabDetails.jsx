@@ -1,7 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../../components/shared/AppLayout';
-import { getMyAttendanceDetails } from '../../lib/attendance';
+import { getMyAttendanceDetails, getMyAttendanceSummaryByType } from '../../lib/attendance';
+
+// Helper to link Lab to Lecture by name (Fuzzy matching)
+function isMatchingLecture(lectureName, labName) {
+  const norm = (s) => (s || '').toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .replace('lab', '')
+    .trim()
+  
+  const nl = norm(lectureName)
+  const nb = norm(labName)
+  
+  // Direct match or one contains the other
+  return nl === nb || (nl.length > 5 && nb.includes(nl)) || (nb.length > 5 && nl.includes(nb))
+}
 
 // ─── Color Helpers ──────────────────────────────────────────────
 function getPercentageColor(p) {
@@ -140,7 +154,7 @@ function TeacherCard({ teacher }) {
 // ─── Subject Section Component ─────────────────────────────────
 function SubjectSection({ subject }) {
   const colors = getPercentageColor(subject.overallPercentage);
-  const isIneligible = subject.overallPercentage < 75;
+  const isIneligible = subject.overallPercentage < 75 && subject.hasMatchingLecture && !subject.isEligibleByLecture;
   return (
     <div style={{ marginBottom: '32px' }}>
       <div style={{
@@ -183,15 +197,36 @@ export default function StudentLabDetails() {
       try {
         setLoading(true);
         setError(null);
-        const { data, error: fetchError } = await getMyAttendanceDetails('lab');
+        
+        const [labDetailsRes, lectureSummaryRes] = await Promise.all([
+          getMyAttendanceDetails('lab'),
+          getMyAttendanceSummaryByType('lecture')
+        ]);
         
         if (controller.signal.aborted) return;
 
-        if (fetchError) {
-          console.warn('Lab details fetch error:', fetchError);
-          setError(fetchError.message || 'Failed to load lab details.');
+        if (labDetailsRes.error) {
+          console.warn('Lab details fetch error:', labDetailsRes.error);
+          setError(labDetailsRes.error.message || 'Failed to load lab details.');
+          return;
         }
-        setLabDetailsData(data || []);
+
+        const labData = labDetailsRes.data || [];
+        const lectureSummaries = lectureSummaryRes.data || [];
+
+        // Apply cross-course eligibility logic
+        const enrichedLabData = labData.map(labSubject => {
+          const matchingLecture = lectureSummaries.find(ls => 
+            isMatchingLecture(ls.name, labSubject.subjectName)
+          );
+          
+          const hasMatchingLecture = !!matchingLecture;
+          const isEligibleByLecture = matchingLecture ? matchingLecture.percentage >= 75 : false;
+          
+          return { ...labSubject, hasMatchingLecture, isEligibleByLecture };
+        });
+
+        setLabDetailsData(enrichedLabData);
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error('Failed to fetch lab details:', err);

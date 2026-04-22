@@ -11,9 +11,6 @@ import {
 const SESSION_TYPE_OPTIONS = [
   { value: 'lecture', label: 'Lecture' },
   { value: 'lab', label: 'Lab' },
-  { value: 'tutorial', label: 'Tutorial' },
-  { value: 'regular', label: 'Regular' },
-  { value: 'randomized', label: 'Randomized' },
 ]
 
 function inferSessionTypeFromSection(section) {

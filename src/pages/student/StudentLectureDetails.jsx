@@ -140,7 +140,6 @@ function TeacherCard({ teacher }) {
 // ─── Subject Section Component ─────────────────────────────────
 function SubjectSection({ subject }) {
   const colors = getPercentageColor(subject.overallPercentage);
-  const isIneligible = subject.overallPercentage < 75;
   return (
     <div style={{ marginBottom: '32px' }}>
       <div style={{
@@ -152,11 +151,6 @@ function SubjectSection({ subject }) {
         <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: colors.text, opacity: 0.4 }} />
         <span style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>{subject.subjectName}</span>
         <span style={{ fontSize: '15px', fontWeight: 800, color: colors.text }}>{subject.overallPercentage}%</span>
-        {isIneligible && (
-          <span style={{ fontSize: '10px', fontWeight: 700, color: '#f87171', background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '8px', padding: '3px 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Ineligible
-          </span>
-        )}
       </div>
       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
         {subject.teachers.map((teacher, idx) => (

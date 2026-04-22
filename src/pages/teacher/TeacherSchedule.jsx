@@ -173,9 +173,11 @@ export default function TeacherSchedule() {
                         ${styleClasses} 
                         rounded-[12px] z-20 px-3 py-2 my-1
                         flex flex-col justify-center items-center text-center
-                        transition-all duration-300 ease-out backdrop-blur-md
-                        hover:-translate-y-1 hover:scale-[1.02] hover:z-30 cursor-pointer shadow-lg
-                        group overflow-hidden border
+                        transition-all duration-300 ease-out
+                        ${['LIB', 'REM', 'LUNCH'].includes((item.code || '').trim().toUpperCase()) 
+                          ? 'cursor-default shadow-none border-none ring-0' 
+                          : 'backdrop-blur-md border hover:-translate-y-1 hover:scale-[1.02] hover:z-30 cursor-pointer shadow-lg'}
+                        group overflow-hidden
                       `} 
                       style={{ 
                         gridColumn: `${colStart}/${colEnd}`, 
@@ -194,17 +196,19 @@ export default function TeacherSchedule() {
                         </span>
                       </div>
                       
-                      <div className="flex flex-col items-center gap-y-1 text-[11px] opacity-85 group-hover:opacity-100 transition-opacity w-full">
-                        <div className="flex items-center justify-between w-full px-1">
-                          <div className="flex items-center gap-1 truncate">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                            <span className="truncate">{item.room || 'TBA'}</span>
+                      {!['LIB', 'REM', 'LUNCH'].includes(item.code) && (
+                        <div className="flex flex-col items-center gap-y-1 text-[11px] opacity-85 group-hover:opacity-100 transition-opacity w-full">
+                          <div className="flex items-center justify-between w-full px-1">
+                            <div className="flex items-center gap-1 truncate">
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                              <span className="truncate">{item.room || 'TBA'}</span>
+                            </div>
+                            <span className="font-bold bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-[9px]">
+                              Sec {item.section}
+                            </span>
                           </div>
-                          <span className="font-bold bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-[9px]">
-                            Sec {item.section}
-                          </span>
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
