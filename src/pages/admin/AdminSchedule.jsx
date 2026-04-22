@@ -81,7 +81,7 @@ export default function AdminSchedule() {
           if (!grouped[key]) {
             grouped[key] = { id: key, yearOfStudy: s.yearOfStudy, section: s.section, label: `Section ${s.section} (Year ${s.yearOfStudy})`, classSections: [] }
           }
-          grouped[key].classSections.push({ id: s.id, courseId: s.courseId, code: s.courses?.code, name: s.courses?.name, teacherName: s.teacherName || 'Unassigned' })
+          grouped[key].classSections.push({ id: s.id, courseId: s.courseId, code: s.courses?.code, name: s.courses?.name, teacherName: s.teacherName || 'Unassigned', teachers: s.teachers || [] })
         })
       setCohorts(Object.values(grouped))
       setSelectedCohortId('')
@@ -131,7 +131,7 @@ export default function AdminSchedule() {
         const courseCode = (s.courses?.code || s.course?.code || '').trim().toUpperCase()
         const isSpecial = ['LIB', 'REM', 'LUNCH'].includes(courseCode)
         let specialColor = isSpecial ? (SPECIAL_BLOCKS.find(sb => sb.code === courseCode)?.specialColor || null) : null
-        return { tempId: Math.random().toString(36).substr(2, 9), classSectionId: s.classSectionId, courseId: s.courseId, day: s.day, startHour, duration: Math.max(1, endHour - startHour), roomNumber: s.roomNumber, courseCode, courseName: s.courses?.name || s.course?.name, teacherName: sectionInfo.teacherName || (isSpecial ? '—' : 'Unknown'), isSpecial, specialColor }
+        return { tempId: Math.random().toString(36).substr(2, 9), classSectionId: s.classSectionId, courseId: s.courseId, day: s.day, startHour, duration: Math.max(1, endHour - startHour), roomNumber: s.roomNumber, courseCode, courseName: s.courses?.name || s.course?.name, teacherName: sectionInfo.teacherName || (isSpecial ? '—' : 'Unknown'), teachers: sectionInfo.teachers || [], teacherId: s.teacherId || null, isSpecial, specialColor }
       })
 
       // Deduplicate special blocks (they apply to all sections, so backend returns multiple identical blocks)
@@ -177,7 +177,7 @@ export default function AdminSchedule() {
       return
     }
     if (!window.confirm(`Are you sure you want to delete the routine "${routine.name}"? This will permanently delete all its schedule blocks.`)) return
-    
+
     try {
       setLoading(true)
       await apiFetch(`/api/v1/admin/routines/${selectedRoutineId}`, { method: 'DELETE' })
@@ -218,11 +218,12 @@ export default function AdminSchedule() {
           })
         } else if (s.classSectionId || s.courseId) {
           payload.push({
-            class_section_id: s.classSectionId || null, 
-            course_id: s.courseId, 
+            class_section_id: s.classSectionId || null,
+            course_id: s.courseId,
             day: s.day,
             time_slot: `${s.startHour}:00-${s.startHour + s.duration}:00`,
-            room_number: roomToSave
+            room_number: roomToSave,
+            teacher_id: s.teacherId || null
           })
         }
       })
@@ -247,7 +248,7 @@ export default function AdminSchedule() {
       .filter(c => !['LIB', 'REM', 'LUNCH'].includes((c.code || '').trim().toUpperCase()))
       .map(c => {
         const cohortInfo = cohortCourseMap[c.id]
-        return { id: cohortInfo?.id || `course-${c.id}`, courseId: c.id, code: c.code, name: c.name, teacherName: cohortInfo?.teacherName || '', isSpecial: false, isCohortCourse: !!cohortInfo, classSectionId: cohortInfo?.id || null }
+        return { id: cohortInfo?.id || `course-${c.id}`, courseId: c.id, code: c.code, name: c.name, teacherName: cohortInfo?.teacherName || '', teachers: cohortInfo?.teachers || [], isSpecial: false, isCohortCourse: !!cohortInfo, classSectionId: cohortInfo?.id || null }
       }),
     ...SPECIAL_BLOCKS
   ]
@@ -289,7 +290,7 @@ export default function AdminSchedule() {
           classSectionId: item.classSectionId || null,
           courseId: item.courseId, day: dropDay, startHour: dropHour, duration: 1,
           roomNumber: defaultRoom || '', courseCode: item.code, courseName: item.name,
-          teacherName: item.teacherName, isSpecial: !!item.isSpecial,
+          teacherName: item.teacherName, teachers: item.teachers || [], teacherId: item.teachers && item.teachers.length === 1 ? item.teachers[0].id : null, isSpecial: !!item.isSpecial,
           specialColor: item.specialColor || null
         }])
       } else if (source === 'grid') {
@@ -346,14 +347,14 @@ export default function AdminSchedule() {
             <div className="flex flex-col">
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Department</label>
               <select value={department} onChange={(e) => setDepartment(e.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white min-w-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="" disabled>Select</option>
+                <option value="" disabled>Select Department</option>
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
             <div className="flex flex-col">
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Cohort</label>
               <select value={selectedCohortId} onChange={(e) => setSelectedCohortId(e.target.value)} disabled={!department || cohorts.length === 0} className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white min-w-[180px] focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
-                <option value="" disabled>{department ? (loading ? 'Loading...' : 'Select Cohort') : 'Select Department'}</option>
+                <option value="" disabled>{department ? (loading ? 'Loading...' : 'Select Cohort') : 'Select Section'}</option>
                 {cohorts.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </div>
@@ -520,7 +521,20 @@ export default function AdminSchedule() {
                                 {!schedule.isSpecial && (
                                   <div>
                                     <label className="text-xs font-medium text-gray-500 block mb-1">Teacher</label>
-                                    <div className="text-sm text-gray-600 dark:text-gray-400">{schedule.teacherName || '—'}</div>
+                                    {schedule.teachers && schedule.teachers.length > 1 ? (
+                                      <select
+                                        value={schedule.teacherId || ''}
+                                        onChange={(e) => setGridSchedules(prev => prev.map(s => s.tempId === schedule.tempId ? { ...s, teacherId: e.target.value } : s))}
+                                        className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:outline-none focus:border-blue-500"
+                                      >
+                                        <option value="" disabled>Select a teacher</option>
+                                        {schedule.teachers.map(t => (
+                                          <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <div className="text-sm text-gray-600 dark:text-gray-400">{schedule.teacherName || '—'}</div>
+                                    )}
                                   </div>
                                 )}
                                 <div>

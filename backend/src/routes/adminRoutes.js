@@ -821,6 +821,7 @@ router.get('/departments/:department/sections', async (req, res) => {
         courses (id, code, name),
         enrollments (count),
         teacher_assignments (
+          teacher_id,
           teacher_profiles (
             profiles (full_name)
           )
@@ -833,16 +834,23 @@ router.get('/departments/:department/sections', async (req, res) => {
       return res.status(500).json({ error: error.message })
     }
 
-    const enriched = (data || []).map((s) => ({
-      id: s.id,
-      section: s.section,
-      yearOfStudy: s.year_of_study,
-      department: s.department,
-      courseId: s.course_id,
-      courses: s.courses,
-      studentsEnrolled: s.enrollments?.[0]?.count || 0,
-      teacherName: s.teacher_assignments?.[0]?.teacher_profiles?.profiles?.full_name || 'Unassigned',
-    }))
+    const enriched = (data || []).map((s) => {
+      const teachers = (s.teacher_assignments || []).map(a => ({
+        id: a.teacher_id,
+        name: a.teacher_profiles?.profiles?.full_name || 'Unknown'
+      }))
+      return {
+        id: s.id,
+        section: s.section,
+        yearOfStudy: s.year_of_study,
+        department: s.department,
+        courseId: s.course_id,
+        courses: s.courses,
+        studentsEnrolled: s.enrollments?.[0]?.count || 0,
+        teachers,
+        teacherName: teachers.length > 0 ? teachers.map(t => t.name).join(', ') : 'Unassigned',
+      }
+    })
 
     return res.json({ data: enriched })
   } catch (err) {
@@ -1131,6 +1139,7 @@ router.get('/schedules', async (req, res) => {
         class_section_id,
         routine_id,
         course_id,
+        teacher_id,
         courses (id, code, name)
       `)
       .in('class_section_id', ids)
@@ -1154,6 +1163,7 @@ router.get('/schedules', async (req, res) => {
       classSectionId: s.class_section_id,
       routineId: s.routine_id,
       courseId: s.course_id,
+      teacherId: s.teacher_id,
       course: s.courses,
     }))
 
@@ -1340,8 +1350,12 @@ router.put('/schedules/replace', async (req, res) => {
 
         if (finalSectionId) {
           processedSchedules.push({
-            ...s,
             class_section_id: finalSectionId,
+            course_id: s.course_id,
+            day: s.day,
+            time_slot: s.time_slot,
+            room_number: s.room_number,
+            teacher_id: s.teacher_id || null,
             routine_id: routineId
           })
         }

@@ -537,24 +537,7 @@ router.get('/sections/:id/students', async (req, res) => {
   }
 })
 
-// PUT /api/v1/profile/dev-role — switch role (dev helper)
-router.put('/dev-role', async (req, res) => {
-  try {
-    const { role } = req.body
-    if (!role) return res.status(400).json({ error: 'role is required' })
 
-    const { error } = await req.supabase
-      .from('profiles')
-      .update({ role })
-      .eq('id', req.user.id)
-
-    if (error) return res.status(400).json({ error: error.message })
-    return res.json({ success: true })
-  } catch (err) {
-    console.error('PUT /profile/dev-role error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
-  }
-})
 
 /**
  * POST /api/v1/profile/onboard

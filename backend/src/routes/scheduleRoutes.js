@@ -102,6 +102,8 @@ function normalizeSchedule(s) {
     class_section_id: s.class_section_id,
     courseId: s.course_id,
     course_id: s.course_id,
+    teacherId: s.teacher_id || null,
+    teacher_id: s.teacher_id || null,
     class_sections: s.class_sections || null,
     courses: s.courses || null,
   }
@@ -168,6 +170,7 @@ async function getCourseScopedSchedulesFallback(supabase, studentProfile) {
       room_number,
       class_section_id,
       course_id,
+      teacher_id,
       class_routines!inner(is_active),
       courses!inner (id, code, name, department, semester),
       class_sections (section, teacher_assignments(teacher_profiles(profiles(full_name))))
@@ -207,6 +210,7 @@ async function getCourseScopedSchedulesFallback(supabase, studentProfile) {
     room_number: row.room_number,
     class_section_id: row.class_section_id,
     course_id: row.course_id,
+    teacher_id: row.teacher_id,
     class_sections: {
       ...(row.class_sections || {}),
       courses: row.courses || null,
@@ -434,7 +438,11 @@ router.get('/student', async (req, res) => {
         .in('class_section_id', sectionIds)
 
       if (assignments && assignments.length > 0) {
-        const teacherIds = assignments.map(a => a.teacher_id).filter(Boolean)
+        const teacherIds = Array.from(new Set([
+          ...assignments.map(a => a.teacher_id),
+          ...normalized.map(s => s.teacher_id)
+        ])).filter(Boolean)
+        
         const { data: tProfiles } = await db
           .from('teacher_profiles')
           .select('id, profiles(full_name)')
@@ -458,10 +466,17 @@ router.get('/student', async (req, res) => {
           const code = (item.courses?.code || '').trim().toUpperCase()
           const isSpecial = ['LIB', 'REM', 'LUNCH'].includes(code)
 
-          if (!isSpecial && item.class_section_id && sectionTeacherMap[item.class_section_id]) {
-            return {
-              ...item,
-              resolved_teacher_name: sectionTeacherMap[item.class_section_id]
+          if (!isSpecial) {
+            if (item.teacher_id && teacherMap[item.teacher_id]) {
+              return {
+                ...item,
+                resolved_teacher_name: teacherMap[item.teacher_id]
+              }
+            } else if (item.class_section_id && sectionTeacherMap[item.class_section_id]) {
+              return {
+                ...item,
+                resolved_teacher_name: sectionTeacherMap[item.class_section_id]
+              }
             }
           }
           return item
@@ -586,7 +601,11 @@ router.get('/today', async (req, res) => {
           .in('class_section_id', sectionIds)
 
         if (assignments && assignments.length > 0) {
-          const teacherIds = assignments.map(a => a.teacher_id).filter(Boolean)
+          const teacherIds = Array.from(new Set([
+            ...assignments.map(a => a.teacher_id),
+            ...allData.map(s => s.teacher_id)
+          ])).filter(Boolean)
+
           const { data: tProfiles } = await db
             .from('teacher_profiles')
             .select('id, profiles(full_name)')
@@ -607,7 +626,12 @@ router.get('/today', async (req, res) => {
           })
           
           allData = allData.map(item => {
-            if (item.class_section_id && sectionTeacherMap[item.class_section_id]) {
+            if (item.teacher_id && teacherMap[item.teacher_id]) {
+              return {
+                ...item,
+                resolved_teacher_name: teacherMap[item.teacher_id]
+              }
+            } else if (item.class_section_id && sectionTeacherMap[item.class_section_id]) {
               return {
                 ...item,
                 resolved_teacher_name: sectionTeacherMap[item.class_section_id]

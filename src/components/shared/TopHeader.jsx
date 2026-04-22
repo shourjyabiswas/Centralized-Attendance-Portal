@@ -1,23 +1,10 @@
 import { useAuth } from '../../hooks/useAuth'
-import { signOut, switchDevRole } from '../../lib/auth'
+import { signOut } from '../../lib/auth'
 import { useNavigate } from 'react-router-dom'
 
 export default function TopHeader({ title }) {
   const { user, role } = useAuth()
   const navigate = useNavigate()
-
-  async function handleSwapRole() {
-    // Cycle through: student → teacher → admin → student
-    let newRole
-    if (role === 'student') newRole = 'teacher'
-    else if (role === 'teacher') newRole = 'admin'
-    else newRole = 'student'
-    
-    await switchDevRole(newRole)
-    // Set the new role in localStorage so useAuth has it cached on next init
-    localStorage.setItem('role', newRole)
-    window.location.reload()
-  }
 
   async function handleSignOut() {
     try {
@@ -47,12 +34,6 @@ export default function TopHeader({ title }) {
           {user?.email}
         </span>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleSwapRole}
-            className="text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30 px-3 py-1.5 rounded-lg font-medium transition-colors border border-blue-100 dark:border-blue-900/30"
-          >
-            Dev: Switch to {role === 'student' ? 'Teacher' : role === 'teacher' ? 'Admin' : 'Student'}
-          </button>
           <button
             onClick={handleSignOut}
             className="text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 px-3 py-1.5 rounded-lg font-medium transition-colors border border-red-100 dark:border-red-900/30"

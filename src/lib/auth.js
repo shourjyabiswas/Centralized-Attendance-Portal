@@ -69,20 +69,7 @@ export async function getMyProfile() {
   }
 }
 
-// Dev helper to instantly swap roles for testing
-export async function switchDevRole(newRole) {
-  const { user } = await getUser()
-  if (user) {
-    try {
-      await apiFetch('/api/v1/profile/dev-role', {
-        method: 'PUT',
-        body: JSON.stringify({ role: newRole }),
-      })
-    } catch (err) {
-      console.error('switchDevRole error:', err)
-    }
-  }
-}
+
 
 // Sign out — stays client-side
 export async function signOut() {
