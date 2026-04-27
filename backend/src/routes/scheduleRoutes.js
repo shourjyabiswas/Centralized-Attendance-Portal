@@ -514,7 +514,7 @@ router.get('/teacher', async (req, res) => {
     const assignedSectionIds = (asgn || []).map(a => a.class_section_id)
     
     let query = db.from('class_schedules')
-      .select('*, class_routines!inner(is_active), class_sections (section, year_of_study, department, courses (name, code, type), teacher_assignments(teacher_profiles(profiles(full_name))))')
+      .select('*, class_routines!inner(is_active), courses (name, code, type), class_sections (section, year_of_study, department, courses (name, code, type), teacher_assignments(teacher_profiles(profiles(full_name))))')
       .eq('class_routines.is_active', true)
       .order('day', { ascending: true })
 
@@ -528,6 +528,9 @@ router.get('/teacher', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message })
     
     const filtered = (data || []).filter(s => {
+      // Exclude special/common blocks — they are not teacher classes
+      const code = (s.courses?.code || s.class_sections?.courses?.code || '').trim().toUpperCase()
+      if (['LIB', 'REM', 'LUNCH'].includes(code)) return false
       if (s.teacher_id) return s.teacher_id === tp.id
       return assignedSectionIds.includes(s.class_section_id)
     })
@@ -553,7 +556,7 @@ router.get('/today', async (req, res) => {
         const assignedSectionIds = (asgn || []).map(a => a.class_section_id)
 
         let query = db.from('class_schedules')
-          .select('*, class_routines!inner(is_active), class_sections (section, year_of_study, department, courses (name, code, type), teacher_assignments(teacher_profiles(profiles(full_name))))')
+          .select('*, class_routines!inner(is_active), courses (name, code, type), class_sections (section, year_of_study, department, courses (name, code, type), teacher_assignments(teacher_profiles(profiles(full_name))))')
           .eq('class_routines.is_active', true)
           .order('day', { ascending: true })
 
@@ -566,6 +569,9 @@ router.get('/today', async (req, res) => {
         const { data } = await query
         
         const filtered = (data || []).filter(s => {
+          // Exclude special/common blocks — they are not teacher classes
+          const code = (s.courses?.code || s.class_sections?.courses?.code || '').trim().toUpperCase()
+          if (['LIB', 'REM', 'LUNCH'].includes(code)) return false
           if (s.teacher_id) return s.teacher_id === tp.id
           return assignedSectionIds.includes(s.class_section_id)
         })

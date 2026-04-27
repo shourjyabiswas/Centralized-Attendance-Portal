@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatCohort } from '../../lib/format'
+import { apiFetch } from '../../lib/api'
 import AppLayout from '../../components/shared/AppLayout'
 import { getMyAssignedSections, getStudentsInSection } from '../../lib/profile'
 import {
@@ -7,22 +8,10 @@ import {
   submitAttendanceRecords,
   getSessionsForSection,
   getRecordsForSession,
+  getSessionSlots,
 } from '../../lib/attendance'
 
-const SESSION_TYPE_OPTIONS = [
-  { value: 'lecture', label: 'Lecture' },
-  { value: 'lab', label: 'Lab' },
-]
-
-function inferSessionTypeFromSection(section) {
-  const classType = String(section?.class_sections?.class_type || '').toLowerCase()
-  if (classType === 'lab') return 'lab'
-  if (classType === 'lecture') return 'lecture'
-
-  const courseName = String(section?.class_sections?.courses?.name || '').toLowerCase()
-  if (courseName.includes('lab')) return 'lab'
-  return 'lecture'
-}
+// Removed inferSessionTypeFromSection because lecture and lab are now separate subjects
 
 function formatSessionDate(session) {
   const rawDate = session?.session_date || session?.date
@@ -51,7 +40,6 @@ export default function TeacherAttendance() {
   const [loadingSections, setLoadingSections] = useState(true)
 
   const [selectedSectionId, setSelectedSectionId] = useState('')
-  const [selectedSessionType, setSelectedSessionType] = useState('lecture')
   const [pastSessions, setPastSessions] = useState([])
 
   const [isSessionActive, setIsSessionActive] = useState(false)
@@ -66,6 +54,13 @@ export default function TeacherAttendance() {
   const [todaySchedules, setTodaySchedules] = useState([])
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('')
   const [loadingSchedule, setLoadingSchedule] = useState(false)
+
+  // Session slot availability (period-aware limits)
+  const [sessionSlots, setSessionSlots] = useState(null)
+  const [loadingSlots, setLoadingSlots] = useState(false)
+
+  // Today's scheduled section IDs — used to filter the dropdown
+  const [todaySectionIds, setTodaySectionIds] = useState(null) // null = loading
 
   useEffect(() => {
     async function loadSectionsAndHistory() {
@@ -84,6 +79,17 @@ export default function TeacherAttendance() {
       const assigned = sectionsRes.data || []
       setSections(assigned)
 
+      // Fetch today's schedule to know which sections have classes today
+      try {
+        const todayRes = await apiFetch('/api/v1/schedules/today?role=teacher')
+        const todayData = todayRes.data || []
+        const ids = new Set(todayData.map(s => s.classSectionId || s.class_section_id).filter(Boolean))
+        setTodaySectionIds(ids)
+      } catch (err) {
+        console.error('Failed to load today schedule for filtering:', err)
+        setTodaySectionIds(new Set())
+      }
+
       if (assigned.length) {
         await refreshPastSessions(assigned)
       } else {
@@ -96,32 +102,49 @@ export default function TeacherAttendance() {
     loadSectionsAndHistory()
   }, [])
 
+  // Fetch session slot availability whenever section or session type changes
   useEffect(() => {
-    async function loadTodaySchedule() {
+    async function loadSlotsAndSchedule() {
       if (!selectedSectionId) {
         setTodaySchedules([])
         setSelectedTimeSlot('')
+        setSessionSlots(null)
         return
       }
 
       setLoadingSchedule(true)
+      setLoadingSlots(true)
       try {
-        const res = await fetch(`/api/v1/schedules/today?role=teacher`).then(r => r.json())
+        // Load today's schedule for time-slot context
+        const res = await apiFetch('/api/v1/schedules/today?role=teacher')
         const myToday = (res.data || []).filter(s => s.classSectionId === selectedSectionId || s.class_section_id === selectedSectionId)
         setTodaySchedules(myToday)
-        
+
         if (myToday.length === 1) {
           setSelectedTimeSlot(myToday[0].timeSlot || myToday[0].time_slot || '')
         } else {
           setSelectedTimeSlot('')
         }
+
+        // Load session slot availability
+        console.log('[slots-ui] Fetching slots for section:', selectedSectionId)
+        const slotsRes = await getSessionSlots(selectedSectionId)
+        console.log('[slots-ui] Response:', JSON.stringify(slotsRes))
+        if (!slotsRes.error && slotsRes.data?.length > 0) {
+          setSessionSlots(slotsRes.data[0])
+          console.log('[slots-ui] Set sessionSlots:', JSON.stringify(slotsRes.data[0]))
+        } else {
+          setSessionSlots(null)
+          console.log('[slots-ui] No slots data, error:', slotsRes.error?.message)
+        }
       } catch (err) {
-        console.error('Failed to load today schedule:', err)
+        console.error('Failed to load today schedule/slots:', err)
       } finally {
         setLoadingSchedule(false)
+        setLoadingSlots(false)
       }
     }
-    loadTodaySchedule()
+    loadSlotsAndSchedule()
   }, [selectedSectionId])
 
   async function refreshPastSessions(sectionList) {
@@ -228,33 +251,15 @@ export default function TeacherAttendance() {
   }
 
   async function resolveSessionIdForSubmit() {
-    const sessionType = selectedSessionType || inferSessionTypeFromSection(activeSection)
-    const createRes = await createAttendanceSession(activeSection.class_section_id, sessionType, selectedTimeSlot)
+    const createRes = await createAttendanceSession(activeSection.class_section_id, 'regular', selectedTimeSlot)
 
     if (!createRes.error && createRes.data?.id) {
       return createRes.data.id
     }
 
+    // If all sessions are used, show a clear error
     const createErrorMsg = createRes.error?.message || ''
-    if (!createErrorMsg.toLowerCase().includes('already exists')) {
-      throw new Error(createErrorMsg || 'Failed to create attendance session.')
-    }
-
-    const sessionsRes = await getSessionsForSection(activeSection.class_section_id)
-    if (sessionsRes.error) {
-      throw new Error(sessionsRes.error.message || 'Failed to fetch existing sessions.')
-    }
-
-    const today = new Date().toISOString().split('T')[0]
-    const existing = (sessionsRes.data || []).find(
-      (s) => s.session_date === today && s.session_type === sessionType && (s.time_slot === selectedTimeSlot || (!s.time_slot && !selectedTimeSlot))
-    )
-
-    if (!existing?.id) {
-      throw new Error('Could not find existing session for today.')
-    }
-
-    return existing.id
+    throw new Error(createErrorMsg || 'Failed to create attendance session.')
   }
 
   async function handleSubmit() {
@@ -289,6 +294,11 @@ export default function TeacherAttendance() {
   const unmarkedCount = students.length - Object.keys(attendance).length
   const allMarked = students.length > 0 && unmarkedCount === 0
 
+  // Filter sections to only those scheduled for today
+  const todaySections = todaySectionIds
+    ? sections.filter(s => todaySectionIds.has(s.class_section_id))
+    : sections
+
   return (
     <AppLayout title="Attendance">
       <div style={{ width: '100%' }} className="flex flex-col gap-6">
@@ -301,71 +311,77 @@ export default function TeacherAttendance() {
                 <div className="h-12 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
               ) : sections.length === 0 ? (
                 <p className="text-sm text-gray-500">You have no assigned courses.</p>
+              ) : todaySections.length === 0 ? (
+                <div className="text-center py-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3">
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+                    <line x1="16" x2="16" y1="2" y2="6" />
+                    <line x1="8" x2="8" y1="2" y2="6" />
+                    <line x1="3" x2="21" y1="10" y2="10" />
+                  </svg>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">No classes scheduled for today</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">You can only start sessions for subjects scheduled on your timetable today.</p>
+                </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                      Select Department and Section
-                    </label>
-                    <select
-                      value={selectedSectionId}
-                      onChange={(e) => {
-                        const nextSectionId = e.target.value
-                        setSelectedSectionId(nextSectionId)
-                        const section = sections.find((s) => s.class_section_id === nextSectionId)
-                        setSelectedSessionType(inferSessionTypeFromSection(section))
-                      }}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                    >
-                      <option value="" disabled>Choose a class...</option>
-                      {sections.map((s) => (
-                        <option key={s.id} value={s.class_section_id}>
-                          {formatCohort(s.class_sections?.department, s.class_sections?.year_of_study, s.class_sections?.section)} ({s.class_sections?.courses?.name})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
+                <div className="flex flex-col gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                      Session Type
+                      Select Today's Class
                     </label>
-                    <select
-                      value={selectedSessionType}
-                      onChange={(e) => setSelectedSessionType(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {SESSION_TYPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {todaySchedules.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider ml-1">Class Slot</label>
+                    <div className="flex flex-col sm:flex-row gap-3">
                       <select
-                        value={selectedTimeSlot}
-                        onChange={(e) => setSelectedTimeSlot(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={selectedSectionId}
+                        onChange={(e) => {
+                          const nextSectionId = e.target.value
+                          setSelectedSectionId(nextSectionId)
+                        }}
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                       >
-                        <option value="">Select a time slot</option>
-                        {todaySchedules.map((s, i) => (
-                          <option key={i} value={s.timeSlot || s.time_slot}>
-                            {s.timeSlot || s.time_slot}
+                        <option value="" disabled>Choose a class...</option>
+                        {todaySections.map((s) => (
+                          <option key={s.id} value={s.class_section_id}>
+                            {formatCohort(s.class_sections?.department, s.class_sections?.year_of_study, s.class_sections?.section)} ({s.class_sections?.courses?.name})
                           </option>
                         ))}
                       </select>
-                    </div>
-                  )}
 
-                  <button
-                    onClick={handleStartSession}
-                    disabled={!selectedSectionId || (todaySchedules.length > 0 && !selectedTimeSlot)}
-                    className="md:col-span-3 w-full sm:w-auto px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
-                  >
-                    Start Session
-                  </button>
+                      <button
+                        onClick={handleStartSession}
+                        disabled={
+                          !selectedSectionId ||
+                          loadingSlots ||
+                          (sessionSlots && sessionSlots.total?.remaining <= 0)
+                        }
+                        className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors whitespace-nowrap"
+                      >
+                        {loadingSlots ? 'Checking availability...' : (
+                          sessionSlots && sessionSlots.total?.remaining <= 0
+                            ? 'No Sessions Available'
+                            : `Start Session`
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Session Slot Availability Badge */}
+                  {selectedSectionId && sessionSlots && (() => {
+                    const slotInfo = sessionSlots.total
+                    if (!slotInfo) return null
+                    const isExhausted = slotInfo.remaining <= 0
+                    return (
+                      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium ${
+                        isExhausted
+                          ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
+                          : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                      }`}>
+                        <span className={`inline-block w-2 h-2 rounded-full ${isExhausted ? 'bg-red-500' : 'bg-emerald-500'}`} />
+                        {isExhausted
+                          ? `All ${slotInfo.max} session(s) used for today`
+                          : `Session ${slotInfo.used + 1} of ${slotInfo.max} — ${slotInfo.remaining} session(s) remaining today`
+                        }
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -420,7 +436,7 @@ export default function TeacherAttendance() {
                                   )}
                                 </div>
                                 <p className="text-xs text-gray-500 mt-0.5">
-                                  Session ID: {session.id} · Type: {session.session_type || 'regular'} {session.time_slot && `· Slot: ${session.time_slot}`}
+                                  {session.session_number ? `Session ${session.session_number}` : `#${session.id?.slice(0, 8)}`} {session.time_slot && `· ${session.time_slot}`}
                                 </p>
                               </div>
                             </div>
@@ -451,7 +467,7 @@ export default function TeacherAttendance() {
                   {formatCohort(activeSection.class_sections?.department, activeSection.class_sections?.year_of_study, activeSection.class_sections?.section)}
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                  {activeSection.class_sections?.courses?.name} · {new Date().toDateString()} · {selectedSessionType} {selectedTimeSlot && `· ${selectedTimeSlot}`}
+                  {activeSection.class_sections?.courses?.name} · {new Date().toDateString()} {selectedTimeSlot && `· ${selectedTimeSlot}`}
                 </p>
               </div>
               <button

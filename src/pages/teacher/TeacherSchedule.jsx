@@ -105,9 +105,20 @@ export default function TeacherSchedule() {
             return null;
           }
 
+          const parseHour = (timeStr) => {
+            if (!timeStr) return NaN;
+            const match = timeStr.match(/(\d+)(?::\d+)?(?:\s*(AM|PM))?/i);
+            if (!match) return NaN;
+            let h = parseInt(match[1], 10);
+            const ampm = match[2] ? match[2].toUpperCase() : null;
+            if (ampm === 'PM' && h < 12) h += 12;
+            if (ampm === 'AM' && h === 12) h = 0;
+            return h;
+          };
+
           const timeParts = timeSlot.split('-');
-          const startHour = parseInt(timeParts[0]?.split(':')[0]);
-          const endHour = timeParts.length > 1 ? parseInt(timeParts[1]?.split(':')[0]) : startHour + 1;
+          const startHour = parseHour(timeParts[0]);
+          const endHour = timeParts.length > 1 ? parseHour(timeParts[1]) : startHour + 1;
 
           if (isNaN(startHour) || isNaN(endHour)) {
             console.warn('[TeacherSchedule] Invalid time format:', s.id, timeSlot);
@@ -146,15 +157,25 @@ export default function TeacherSchedule() {
     }
   }
 
-  function getStyleForItem(item) {
+  function getStyleForItem(item, isOngoing) {
     const code = (item.code || '').trim().toUpperCase();
     if (SPECIAL_STYLES[code]) return { classes: SPECIAL_STYLES[code], palette: null };
 
     const key = getSectionKey(item);
     const paletteIndex = sectionColorMap[key] ?? 0;
     const p = SECTION_PALETTES[paletteIndex];
+    
+    if (isOngoing) {
+      // Vibrant, glowing style for the active class
+      return {
+        classes: `bg-gradient-to-br ${p.bg.replace('/10', '/30').replace('/20', '/40')} ${p.border.replace('/30', '/80')} ring-2 ${p.border.replace('border-', 'ring-').replace('/30', '/80')} ${p.text} shadow-lg animate-[pulse_2s_ease-in-out_infinite]`,
+        palette: p,
+      };
+    }
+
+    // Muted default style
     return {
-      classes: `bg-gradient-to-br ${p.bg} ${p.border} ${p.hoverBorder} ${p.text} ${p.shadow}`,
+      classes: `bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/80 hover:border-slate-600/80 text-slate-300`,
       palette: p,
     };
   }
@@ -175,6 +196,11 @@ export default function TeacherSchedule() {
   // Stat chips
   const totalClasses = schedule.filter(s => !['LIB', 'REM', 'LUNCH'].includes((s.code || '').trim().toUpperCase())).length;
   const uniqueSectionsCount = uniqueSections.length;
+
+  const now = new Date();
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const todayName = DAY_NAMES[now.getDay()];
+  const currentHour = now.getHours();
 
   return (
     <AppLayout title="My Schedule">
@@ -328,8 +354,10 @@ export default function TeacherSchedule() {
                   const rowEnd = rowStart + 1;
                   const colStart = 2 + (item.start - 9);
                   const colEnd = colStart + item.duration;
+                  
+                  const isOngoing = item.day === todayName && currentHour >= item.start && currentHour < (item.start + item.duration);
 
-                  const { classes: styleClasses, palette } = getStyleForItem(item);
+                  const { classes: styleClasses, palette } = getStyleForItem(item, isOngoing);
                   const isSpecial = ['LIB', 'REM', 'LUNCH'].includes((item.code || '').trim().toUpperCase());
 
                   return (
@@ -342,8 +370,9 @@ export default function TeacherSchedule() {
                         transition-all duration-300 ease-out
                         ${isSpecial
                           ? 'cursor-default shadow-none border-none ring-0'
-                          : 'backdrop-blur-md border hover:-translate-y-1 hover:scale-[1.02] hover:z-30 cursor-pointer shadow-lg'}
+                          : 'backdrop-blur-md border hover:-translate-y-1 hover:scale-[1.02] hover:z-30 cursor-pointer'}
                         group overflow-hidden
+                        ${isOngoing ? 'shadow-[0_0_20px_rgba(255,255,255,0.1)] z-30' : ''}
                       `}
                       style={{
                         gridColumn: `${colStart}/${colEnd}`,
@@ -355,7 +384,7 @@ export default function TeacherSchedule() {
                       onClick={() => !isSpecial && setSelectedBlock(item)}
                     >
                       <div className="flex flex-col items-center justify-center w-full gap-0.5 mb-1">
-                        <span className="font-bold text-[13px] leading-tight group-hover:text-white transition-colors truncate w-full">
+                        <span className={`font-bold text-[13px] leading-tight transition-colors truncate w-full ${isOngoing ? 'text-white' : 'group-hover:text-white'}`}>
                           {item.code}
                         </span>
                         <span className="text-[10px] opacity-80 leading-tight truncate w-full">

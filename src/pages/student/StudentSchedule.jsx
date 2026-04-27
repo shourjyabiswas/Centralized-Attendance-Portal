@@ -104,9 +104,20 @@ export default function StudentSchedule() {
             return null;
           }
 
+          const parseHour = (timeStr) => {
+            if (!timeStr) return NaN;
+            const match = timeStr.match(/(\d+)(?::\d+)?(?:\s*(AM|PM))?/i);
+            if (!match) return NaN;
+            let h = parseInt(match[1], 10);
+            const ampm = match[2] ? match[2].toUpperCase() : null;
+            if (ampm === 'PM' && h < 12) h += 12;
+            if (ampm === 'AM' && h === 12) h = 0;
+            return h;
+          };
+
           const timeParts = timeSlot.split('-');
-          const startHour = parseInt(timeParts[0]?.split(':')[0]);
-          const endHour = timeParts.length > 1 ? parseInt(timeParts[1]?.split(':')[0]) : startHour + 1;
+          const startHour = parseHour(timeParts[0]);
+          const endHour = timeParts.length > 1 ? parseHour(timeParts[1]) : startHour + 1;
 
           if (isNaN(startHour) || isNaN(endHour)) {
             console.warn('[StudentSchedule] Invalid time format for entry:', s.id, timeSlot);

@@ -6,10 +6,18 @@ import { getTodaySchedule } from '../../lib/schedule'
 import { formatCohort } from '../../lib/format'
 
 function parseTime(value) {
-  if (!value || typeof value !== 'string') return null
-  const [h, m] = value.split(':').map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return null
-  return { h, m }
+  if (!value || typeof value !== 'string') return null;
+  const match = value.match(/(\d+):(\d+)(?:\s*(AM|PM))?/i);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const ampm = match[3] ? match[3].toUpperCase() : null;
+  
+  if (ampm === 'PM' && h < 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return { h, m };
 }
 
 function getClassTiming(cls) {
@@ -131,14 +139,12 @@ export default function TeacherDashboard() {
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
               Today's classes
             </h2>
-            {!loading && regularClasses.length > 0 && (
-              <button
-                onClick={() => navigate('/schedule')}
-                className="text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
-              >
-                View full schedule →
-              </button>
-            )}
+            <button
+              onClick={() => navigate('/schedule')}
+              className="text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+            >
+              View full schedule →
+            </button>
           </div>
           {loading ? (
             <div className="flex flex-col gap-3">
@@ -157,6 +163,12 @@ export default function TeacherDashboard() {
               </svg>
               <p className="text-sm text-gray-400 dark:text-gray-500">No classes scheduled for today</p>
               <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Enjoy your free day!</p>
+              <button
+                onClick={() => navigate('/schedule')}
+                className="mt-4 text-xs px-4 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-medium border border-indigo-500/20 transition-colors"
+              >
+                View weekly schedule →
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-3">

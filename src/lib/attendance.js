@@ -32,6 +32,20 @@ export async function createAttendanceSession(classSectionId, sessionType = 'reg
 }
 
 /**
+ * Get session slot availability for today.
+ * Returns max/used/remaining counts per session type for each class section.
+ *
+ * @param {string} [classSectionId] — optional, if omitted returns all assigned sections
+ * @returns {{ data: Array<{ classSectionId, day, lecture: {max,used,remaining}, lab: {max,used,remaining} }> | null, error: Error | null }}
+ */
+export async function getSessionSlots(classSectionId) {
+  const qs = classSectionId ? `?classSectionId=${classSectionId}` : ''
+  return apiFetch(`/api/v1/attendance/sessions/slots${qs}`)
+    .then(r => ({ data: r.data, error: null }))
+    .catch(err => ({ data: null, error: err }))
+}
+
+/**
  * Submit (or re-submit) attendance records for a session.
  * Safe to call multiple times — backend upserts on (session_id, student_id).
  *

@@ -528,6 +528,158 @@ async function buildAttendanceDetails(supabase, studentId, sessionType) {
 
 // ─── TEACHER: SESSION MANAGEMENT ─────────────────────────────────────────────
 
+const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/**
+ * Compute how many periods a given class_section has on a specific day,
+ * broken down by session type (lecture vs lab), based on the active routine.
+ *
+ * Returns { lecture: N, lab: N, total: N }
+ */
+async function getMaxSessionsForDay(supabase, classSectionId, dayName) {
+  // Find the class_section to resolve its cohort (year + section)
+  const { data: section } = await supabase
+    .from('class_sections')
+    .select('year_of_study, section, department, courses ( type )')
+    .eq('id', classSectionId)
+    .single()
+
+  if (!section) return { lecture: 0, lab: 0, total: 0 }
+
+  const yearNum = normalizeYear(section.year_of_study)
+
+  // Find the active routine for this cohort
+  let routineQuery = supabase
+    .from('class_routines')
+    .select('id')
+    .eq('is_active', true)
+
+  if (yearNum) routineQuery = routineQuery.eq('year_of_study', yearNum)
+  if (section.section) routineQuery = routineQuery.eq('section', section.section)
+
+  const { data: activeRoutine } = await routineQuery.maybeSingle()
+
+  if (!activeRoutine) {
+    // No routine configured — no sessions allowed until schedule is set up
+    return { lecture: 0, lab: 0, total: 0 }
+  }
+
+  // Count how many schedule blocks exist for this class_section on this day
+  const { data: scheduleBlocks } = await supabase
+    .from('class_schedules')
+    .select('id, class_section_id, course_id, courses (code)')
+    .eq('routine_id', activeRoutine.id)
+    .eq('class_section_id', classSectionId)
+    .eq('day', dayName)
+
+  // Filter out special/common blocks — they aren't attendable sessions
+  const SPECIAL_CODES = ['LIB', 'REM', 'LUNCH']
+  const realBlocks = (scheduleBlocks || []).filter(b => {
+    const code = (b.courses?.code || '').trim().toUpperCase()
+    return !SPECIAL_CODES.includes(code)
+  })
+
+  if (realBlocks.length === 0) {
+    // No real schedule blocks for this day — no sessions allowed
+    return { total: 0 }
+  }
+
+  return { total: realBlocks.length }
+}
+
+/**
+ * Count how many attendance sessions already exist today for a class_section,
+ * broken down by session type.
+ */
+async function getUsedSessionsForDay(supabase, classSectionId, today) {
+  const { data: sessions } = await supabase
+    .from('attendance_sessions')
+    .select('id')
+    .eq('class_section_id', classSectionId)
+    .eq('session_date', today)
+
+  return { total: sessions ? sessions.length : 0 }
+}
+
+// GET /api/v1/attendance/sessions/slots — how many sessions can still be created today
+// Query: ?classSectionId=xxx  (optional, if omitted returns for all assigned sections)
+router.get('/sessions/slots', async (req, res) => {
+  try {
+    const { classSectionId } = req.query
+    console.log('[slots] Request received, classSectionId:', classSectionId)
+
+    // Get teacher profile
+    const { data: teacherProfile, error: tpError } = await req.supabase
+      .from('teacher_profiles')
+      .select('id')
+      .eq('profile_id', req.user.id)
+      .single()
+
+    if (tpError) console.error('[slots] teacher_profiles error:', tpError.message)
+    if (!teacherProfile) return res.status(403).json({ error: 'No teacher profile found' })
+
+    const today = new Date().toISOString().split('T')[0]
+    const todayDay = DAY_NAMES_FULL[new Date().getDay()]
+    console.log('[slots] today:', today, 'dayName:', todayDay)
+
+    // Resolve which sections to report on
+    let sectionIds = []
+    if (classSectionId) {
+      sectionIds = [classSectionId]
+    } else {
+      // Get all assigned sections
+      const { data: assignments } = await req.supabase
+        .from('teacher_assignments')
+        .select('class_section_id')
+        .eq('teacher_id', teacherProfile.id)
+
+      sectionIds = (assignments || []).map(a => a.class_section_id)
+
+      // Also include sections where they're the assigned schedule teacher
+      const { data: scheduleAssignments } = await req.supabase
+        .from('class_schedules')
+        .select('class_section_id')
+        .eq('teacher_id', teacherProfile.id)
+
+      const scheduleIds = (scheduleAssignments || []).map(s => s.class_section_id)
+      sectionIds = Array.from(new Set([...sectionIds, ...scheduleIds]))
+    }
+
+    console.log('[slots] sectionIds:', sectionIds)
+
+    if (sectionIds.length === 0) {
+      return res.json({ data: [] })
+    }
+
+    // Compute slots for each section
+    const db = supabaseAdmin || req.supabase
+    const results = []
+
+    for (const secId of sectionIds) {
+      const max = await getMaxSessionsForDay(db, secId, todayDay)
+      const used = await getUsedSessionsForDay(db, secId, today)
+      console.log('[slots] section:', secId, 'max:', max, 'used:', used)
+
+      results.push({
+        classSectionId: secId,
+        day: todayDay,
+        date: today,
+        total: {
+          max: max.total,
+          used: used.total,
+          remaining: Math.max(0, max.total - used.total),
+        },
+      })
+    }
+
+    console.log('[slots] returning', results.length, 'results')
+    return res.json({ data: results })
+  } catch (err) {
+    console.error('GET /attendance/sessions/slots error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // POST /api/v1/attendance/sessions — create a new attendance session
 router.post('/sessions', async (req, res) => {
   try {
@@ -569,29 +721,25 @@ router.post('/sessions', async (req, res) => {
       }
     }
 
-    // Block duplicate sessions for the same date and time slot
+    // ── Period-count-based session limiting ──────────────────────────────
     const today = new Date().toISOString().split('T')[0]
-    let existingQuery = req.supabase
-      .from('attendance_sessions')
-      .select('id')
-      .eq('class_section_id', classSectionId)
-      .eq('session_date', today)
-      .eq('session_type', sessionType)
+    const todayDay = DAY_NAMES_FULL[new Date().getDay()]
+    const db = supabaseAdmin || req.supabase
 
-    if (timeSlot) {
-      existingQuery = existingQuery.eq('time_slot', timeSlot)
-    } else {
-      // If no timeSlot provided, we still check for any session of this type for today
-      // to maintain backward compatibility, but we might want to allow it if we want multiple
-      // untimed sessions. For now, let's keep it strict if no slot provided.
-      existingQuery = existingQuery.is('time_slot', null)
+    // Get max allowed sessions from the schedule
+    const max = await getMaxSessionsForDay(db, classSectionId, todayDay)
+    const used = await getUsedSessionsForDay(db, classSectionId, today)
+
+    if (used.total >= max.total) {
+      return res.status(409).json({
+        error: `All ${max.total} session(s) for today have been used. (${used.total}/${max.total})`,
+        maxSessions: max.total,
+        usedSessions: used.total,
+      })
     }
 
-    const { data: existing } = await existingQuery.maybeSingle()
-
-    if (existing) {
-      return res.status(409).json({ data: existing, error: 'Session already exists for this time slot today' })
-    }
+    // Assign sequential session_number within (class_section_id, date)
+    const sessionNumber = used.total + 1
 
     const { data, error } = await req.supabase
       .from('attendance_sessions')
@@ -600,7 +748,8 @@ router.post('/sessions', async (req, res) => {
         teacher_id: teacherProfile.id,
         session_date: today,
         session_type: sessionType,
-        time_slot: timeSlot || null
+        session_number: sessionNumber,
+        time_slot: timeSlot || `Session ${sessionNumber}`
       })
       .select()
       .single()
