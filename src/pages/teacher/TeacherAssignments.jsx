@@ -387,7 +387,7 @@ export default function TeacherAssignments() {
                       <div key={q.id} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-4 flex items-start gap-4">
                         <span className="text-xs text-gray-300 dark:text-gray-600 mt-0.5 shrink-0">{i + 1}</span>
                         <div className="flex-1">
-                          <p className="text-sm text-gray-800 dark:text-white">{q.question_text}</p>
+                          <p className="text-sm text-gray-800 dark:text-white">{q.question_text || q.text}</p>
                           <div className="flex gap-2 mt-1.5">
                             {q.topic && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400">

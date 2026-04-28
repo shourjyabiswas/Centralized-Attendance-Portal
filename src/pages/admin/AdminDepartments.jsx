@@ -114,10 +114,8 @@ export default function AdminDepartments() {
   if (loading) {
     return (
       <AppLayout title="Departments">
-        <div style={{ width: '100%' }} className="flex flex-col gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
-          ))}
+        <div style={{ width: '100%' }} className="flex items-center justify-center min-h-[60vh]">
+          <SpiralLoader />
         </div>
       </AppLayout>
     )

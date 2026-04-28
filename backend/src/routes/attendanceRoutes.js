@@ -508,7 +508,9 @@ async function buildAttendanceDetails(supabase, studentId, sessionType) {
       ? `${formatTime(schedule.start)}–${formatTime(schedule.end)}`
       : ''
 
-    const sessionTimeStr = session.time_slot || timeStr
+    const rawTimeSlot = session.time_slot || ''
+    const isPlaceholderSlot = /^session\s+\d+$/i.test(rawTimeSlot.trim())
+    const sessionTimeStr = !rawTimeSlot || isPlaceholderSlot ? timeStr : rawTimeSlot
 
     subjectMap[class_section_id].teachers[teacherKey].records.push({
       date: dateStr,
@@ -741,6 +743,32 @@ router.post('/sessions', async (req, res) => {
     // Assign sequential session_number within (class_section_id, date)
     const sessionNumber = used.total + 1
 
+    let resolvedTimeSlot = (timeSlot || '').trim()
+
+    if (!resolvedTimeSlot) {
+      const { data: scheduleRows } = await req.supabase
+        .from('class_schedules')
+        .select('start_time, end_time, day, day_of_week, teacher_id')
+        .eq('class_section_id', classSectionId)
+
+      const dayKey = todayDay.slice(0, 3).toLowerCase()
+      const sameDay = (scheduleRows || []).filter((row) => {
+        const rawDay = String(row.day || row.day_of_week || '')
+        return rawDay.slice(0, 3).toLowerCase() === dayKey
+      })
+
+      const teacherRows = sameDay.filter((row) => row.teacher_id === teacherProfile.id)
+      const candidates = teacherRows.length ? teacherRows : sameDay
+      const ordered = candidates
+        .slice()
+        .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))
+
+      const slot = ordered[sessionNumber - 1]
+      if (slot?.start_time && slot?.end_time) {
+        resolvedTimeSlot = `${String(slot.start_time).slice(0, 5)}-${String(slot.end_time).slice(0, 5)}`
+      }
+    }
+
     const { data, error } = await req.supabase
       .from('attendance_sessions')
       .insert({
@@ -749,12 +777,21 @@ router.post('/sessions', async (req, res) => {
         session_date: today,
         session_type: sessionType,
         session_number: sessionNumber,
-        time_slot: timeSlot || `Session ${sessionNumber}`
+        time_slot: resolvedTimeSlot || `Session ${sessionNumber}`
       })
       .select()
       .single()
 
-    if (error) return res.status(400).json({ error: error.message })
+    if (error) {
+      const message = error.message || ''
+      if (message.includes('attendance_sessions_class_section_id_session_date_key')) {
+        return res.status(409).json({
+          error: 'Attendance sessions are limited to one per class per day by a legacy DB constraint. Update the constraint to include session_number to allow multiple periods.',
+          hint: 'Run backend/migrations/002_update_attendance_sessions_unique.sql',
+        })
+      }
+      return res.status(400).json({ error: message })
+    }
     return res.status(201).json({ data })
   } catch (err) {
     console.error('POST /attendance/sessions error:', err)

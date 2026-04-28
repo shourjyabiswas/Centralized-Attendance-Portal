@@ -40,6 +40,7 @@ export default function AdminSchedule() {
   const [routines, setRoutines] = useState([])
   const [selectedRoutineId, setSelectedRoutineId] = useState('')
   const [allCourses, setAllCourses] = useState([])
+  const [courseSearch, setCourseSearch] = useState('')
   const [defaultRoom, setDefaultRoom] = useState('')
   const [gridSchedules, setGridSchedules] = useState([])
   const [loading, setLoading] = useState(false)
@@ -58,6 +59,13 @@ export default function AdminSchedule() {
     fetchSections();
     fetchTeachers();
   }, [])
+  async function fetchAllCourses() {
+    try {
+      const data = await apiFetch('/api/v1/admin/courses')
+      setAllCourses(data.data || [])
+    } catch (err) { console.error('Error fetching courses:', err) }
+  }
+
 
   // Auto-clear toast messages
   useEffect(() => {
@@ -91,13 +99,6 @@ export default function AdminSchedule() {
     }
     else { setGridSchedules([]) }
   }, [selectedRoutineId, routines.length, selectedYear, selectedSection])
-
-  async function fetchAllCourses() {
-    try {
-      const data = await apiFetch('/api/v1/admin/courses')
-      setAllCourses(data.data || [])
-    } catch (err) { console.error('Error fetching courses:', err) }
-  }
 
   async function fetchSections() {
     try {
@@ -163,10 +164,11 @@ export default function AdminSchedule() {
     } catch (err) { setError('Failed to load routines') } finally { setLoading(false) }
   }
 
-  async function fetchSchedules() {
+  async function fetchSchedules(forceRefresh = false) {
     // Only return if we have routines but none is selected
     if (routines.length > 0 && !selectedRoutineId) return
     if (!selectedYear || !selectedSection) return
+    if (!cohort) return
     const yearNum = parseInt(selectedYear)
     try {
       setLoading(true)
@@ -175,14 +177,17 @@ export default function AdminSchedule() {
       const sectionIds = cohort?.classSections?.map(cs => cs.id).join(',')
       const url = `/api/v1/admin/schedules?year=${yearNum}&section=${selectedSection}${sectionIds ? `&sectionIds=${sectionIds}` : ''}${selectedRoutineId ? `&routineId=${selectedRoutineId}` : ''}`
       const data = await apiFetch(url, {
-        cache: false,
-        forceRefresh: true,
+        cache: true,
+        cacheTtlMs: 2 * 60 * 1000,
+        staleWindowMs: 5 * 60 * 1000,
+        staleWhileRevalidate: true,
+        forceRefresh,
       })
       const formatted = (data.data || []).map(s => {
         const timeParts = s.timeSlot.split('-')
         const startHour = parseInt(timeParts[0].split(':')[0])
         const endHour = timeParts.length > 1 ? parseInt(timeParts[1].split(':')[0]) : startHour + 1
-        const sectionInfo = cohort.classSections.find(c => c.id === s.classSectionId) || {}
+        const sectionInfo = (cohort?.classSections || []).find(c => c.id === s.classSectionId) || {}
         const courseCode = (s.courses?.code || s.course?.code || '').trim().toUpperCase()
         const isSpecial = ['LIB', 'REM', 'LUNCH'].includes(courseCode)
         let specialColor = isSpecial ? (SPECIAL_BLOCKS.find(sb => sb.code === courseCode)?.specialColor || null) : null
@@ -293,7 +298,7 @@ export default function AdminSchedule() {
         adminDepartment: adminDepartment
       }
       await apiFetch('/api/v1/admin/schedules/replace', { method: 'PUT', body: JSON.stringify(body) })
-      await fetchSchedules()
+      await fetchSchedules(true)
       setSuccessMsg('Schedule saved successfully!')
       setTimeout(() => setSuccessMsg(null), 3000)
     } catch (err) { setError(err.message) } finally { setSaving(false) }
@@ -309,22 +314,56 @@ export default function AdminSchedule() {
     setGridSchedules([])
   }
 
-  // Build a courseId -> classSectionId map from the cohort
-  const cohortCourseMap = {}
-  if (cohort) {
-    cohort.classSections.forEach(cs => { cohortCourseMap[cs.courseId] = cs })
+  const resolveYearFromSemester = (semester) => {
+    const semNum = parseInt(semester, 10)
+    if (!Number.isFinite(semNum) || semNum <= 0) return null
+    return Math.ceil(semNum / 2)
   }
 
-  // Build palette items: all courses + special blocks
-  const paletteItems = [
-    ...allCourses
-      .filter(c => !['LIB', 'REM', 'LUNCH'].includes((c.code || '').trim().toUpperCase()))
-      .map(c => {
-        const cohortInfo = cohortCourseMap[c.id]
-        return { id: cohortInfo?.id || `course-${c.id}`, courseId: c.id, code: c.code, name: c.name, teacherName: cohortInfo?.teacherName || '', teachers: cohortInfo?.teachers || [], isSpecial: false, isCohortCourse: !!cohortInfo, classSectionId: cohortInfo?.id || null }
-      }),
-    ...SPECIAL_BLOCKS
-  ]
+  const yearNumber = selectedYear ? parseInt(selectedYear, 10) : null
+
+  // Build palette items: cohort courses + year-matched courses (even if unassigned)
+  const paletteCourseItems = (cohort?.classSections || []).map(cs => ({
+    id: cs.id,
+    courseId: cs.courseId,
+    code: cs.code,
+    name: cs.name,
+    teacherName: cs.teacherName || '',
+    teachers: cs.teachers || [],
+    isSpecial: false,
+    isCohortCourse: true,
+    classSectionId: cs.id,
+  }))
+
+  const cohortCourseIds = new Set((cohort?.classSections || []).map(cs => cs.courseId))
+  const yearCourses = (allCourses || []).filter(c => {
+    if (!yearNumber) return false
+    const courseYear = resolveYearFromSemester(c.semester)
+    if (!courseYear || courseYear !== yearNumber) return false
+    return true
+  })
+
+  yearCourses.forEach(c => {
+    if (cohortCourseIds.has(c.id)) return
+    paletteCourseItems.push({
+      id: `course-${c.id}`,
+      courseId: c.id,
+      code: c.code,
+      name: c.name,
+      teacherName: '',
+      teachers: [],
+      isSpecial: false,
+      isCohortCourse: false,
+      classSectionId: null,
+    })
+  })
+
+  const searchValue = courseSearch.trim().toLowerCase()
+  const filteredPaletteCourses = paletteCourseItems.filter(item => {
+    if (!searchValue) return true
+    const haystack = `${item.code || ''} ${item.name || ''}`.toLowerCase()
+    return haystack.includes(searchValue)
+  })
 
   const handleDragStart = (e, item, source) => {
     e.dataTransfer.setData('application/json', JSON.stringify({ item, source }))
@@ -520,6 +559,13 @@ export default function AdminSchedule() {
             <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30">
               <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Course Palette</h3>
               <p className="text-xs text-gray-500 mt-1">Drag onto the grid</p>
+              <input
+                type="text"
+                value={courseSearch}
+                onChange={(e) => setCourseSearch(e.target.value)}
+                placeholder="Search course"
+                className="mt-3 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
             <div className="p-3 overflow-y-auto custom-scrollbar flex-1 space-y-2">
               {/* Special blocks first */}
@@ -531,8 +577,8 @@ export default function AdminSchedule() {
                 </div>
               ))}
 
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold px-1 pt-2">All Courses</p>
-              {paletteItems.filter(p => !p.isSpecial).map(item => (
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold px-1 pt-2">Year Courses</p>
+              {filteredPaletteCourses.map(item => (
                 <div key={item.id} draggable onDragStart={(e) => handleDragStart(e, item, 'palette')} className={`p-2.5 rounded-xl border transition-shadow cursor-grab active:cursor-grabbing hover:shadow-md ${item.isCohortCourse ? getCourseColor(item.courseId) : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300'}`}>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-xs">{item.code}</div>
@@ -545,7 +591,12 @@ export default function AdminSchedule() {
                   </div>}
                 </div>
               ))}
-              {allCourses.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Loading courses...</p>}
+              {cohort && filteredPaletteCourses.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No courses match this search.</p>
+              )}
+              {!cohort && (
+                <p className="text-xs text-gray-400 text-center py-4">Select a year and section to see courses.</p>
+              )}
             </div>
           </div>
 

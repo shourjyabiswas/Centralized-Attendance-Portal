@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import { apiFetch } from '../../lib/api'
+import SpiralLoader from '../../components/shared/Loader'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null)
@@ -27,10 +28,8 @@ export default function AdminDashboard() {
   if (loading) {
     return (
       <AppLayout title="Admin Dashboard">
-        <div style={{ width: '100%' }} className="flex flex-col gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />
-          ))}
+        <div style={{ width: '100%' }} className="flex items-center justify-center min-h-[60vh]">
+          <SpiralLoader />
         </div>
       </AppLayout>
     )

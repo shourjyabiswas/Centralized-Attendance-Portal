@@ -10,6 +10,7 @@ import {
   getRecordsForSession,
   getSessionSlots,
 } from '../../lib/attendance'
+import SpiralLoader from '../../components/shared/Loader'
 
 // Removed inferSessionTypeFromSection because lecture and lab are now separate subjects
 
@@ -33,6 +34,66 @@ function buildSessionStats(records = []) {
     total,
     isBunk: total > 0 && absent === total,
   }
+}
+
+const PLACEHOLDER_SLOT_RE = /^session\s+\d+$/i
+
+function parseTimeSlotStart(slot) {
+  const cleaned = String(slot || '').trim()
+  if (!cleaned) return null
+  const parts = cleaned.split(/-|–/)
+  if (!parts.length) return null
+  const start = parts[0].trim()
+  const [hh, mm] = start.split(':').map((v) => parseInt(v, 10))
+  if (Number.isNaN(hh)) return null
+  return hh * 60 + (Number.isNaN(mm) ? 0 : mm)
+}
+
+function buildScheduleSlotMap(schedules = []) {
+  const map = {}
+  schedules.forEach((s) => {
+    const sectionId = s.classSectionId || s.class_section_id
+    const day = s.day
+    const timeSlot = s.timeSlot || s.time_slot
+    if (!sectionId || !day || !timeSlot) return
+    const key = `${sectionId}__${day}`
+    if (!map[key]) map[key] = []
+    map[key].push(timeSlot)
+  })
+
+  Object.keys(map).forEach((key) => {
+    map[key] = map[key]
+      .slice()
+      .sort((a, b) => {
+        const aStart = parseTimeSlotStart(a)
+        const bStart = parseTimeSlotStart(b)
+        if (aStart == null && bStart == null) return 0
+        if (aStart == null) return 1
+        if (bStart == null) return -1
+        return aStart - bStart
+      })
+  })
+
+  return map
+}
+
+function resolveSessionTimeSlot(session, scheduleSlotMap) {
+  const raw = String(session.time_slot || '').trim()
+  if (raw && !PLACEHOLDER_SLOT_RE.test(raw)) return raw
+
+  const rawDate = session.session_date || session.date
+  if (!rawDate) return raw
+
+  const dateObj = new Date(`${rawDate}T00:00:00`)
+  if (Number.isNaN(dateObj.getTime())) return raw
+
+  const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+  const key = `${session.class_section_id}__${dayName}`
+  const slots = scheduleSlotMap[key] || []
+  if (!slots.length) return raw
+
+  const index = Math.max(0, (session.session_number || 1) - 1)
+  return slots[index] || slots[0] || raw
 }
 
 export default function TeacherAttendance() {
@@ -148,6 +209,14 @@ export default function TeacherAttendance() {
   }, [selectedSectionId])
 
   async function refreshPastSessions(sectionList) {
+    let scheduleSlotMap = {}
+    try {
+      const scheduleRes = await apiFetch('/api/v1/schedules/teacher')
+      scheduleSlotMap = buildScheduleSlotMap(scheduleRes.data || [])
+    } catch (err) {
+      console.warn('Failed to load teacher schedule for session times:', err)
+    }
+
     const sessionLists = await Promise.all(
       (sectionList || []).map(async (section) => {
         const sessionsRes = await getSessionsForSection(section.class_section_id)
@@ -161,6 +230,7 @@ export default function TeacherAttendance() {
               ...session,
               class_section_id: session.class_section_id,
               date: session.session_date,
+              time_slot: resolveSessionTimeSlot(session, scheduleSlotMap),
               ...stats,
             }
           })
@@ -308,7 +378,9 @@ export default function TeacherAttendance() {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Start a New Session</h2>
 
               {loadingSections ? (
-                <div className="h-12 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
+                <div className="flex items-center justify-center min-h-[30vh]">
+                  <SpiralLoader />
+                </div>
               ) : sections.length === 0 ? (
                 <p className="text-sm text-gray-500">You have no assigned courses.</p>
               ) : todaySections.length === 0 ? (
@@ -390,8 +462,8 @@ export default function TeacherAttendance() {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Previous Sessions</h2>
 
               {loadingSections ? (
-                <div className="flex flex-col gap-4">
-                  {[1, 2].map((i) => <div key={i} className="h-24 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />)}
+                <div className="flex items-center justify-center min-h-[40vh]">
+                  <SpiralLoader />
                 </div>
               ) : groupedPastSessions.length === 0 ? (
                 <div className="bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 rounded-2xl px-6 py-10 text-center">
@@ -436,7 +508,10 @@ export default function TeacherAttendance() {
                                   )}
                                 </div>
                                 <p className="text-xs text-gray-500 mt-0.5">
-                                  {session.session_number ? `Session ${session.session_number}` : `#${session.id?.slice(0, 8)}`} {session.time_slot && `· ${session.time_slot}`}
+                                  {session.session_number ? `Session ${session.session_number}` : `#${session.id?.slice(0, 8)}`}
+                                  {session.time_slot && !/^session\s+\d+$/i.test(String(session.time_slot).trim())
+                                    ? ` · ${session.time_slot}`
+                                    : ''}
                                 </p>
                               </div>
                             </div>
@@ -479,10 +554,8 @@ export default function TeacherAttendance() {
             </div>
 
             {loadingStudents ? (
-              <div className="flex flex-col gap-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />
-                ))}
+              <div className="flex items-center justify-center min-h-[40vh]">
+                <SpiralLoader />
               </div>
             ) : students.length === 0 ? (
               <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-10 text-center">

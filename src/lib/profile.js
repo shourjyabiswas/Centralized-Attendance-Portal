@@ -1,5 +1,8 @@
 import { apiFetch } from './api'
 
+const CACHE_TTL_MS = 2 * 60 * 1000
+const STALE_WINDOW_MS = 5 * 60 * 1000
+
 export async function getMyStudentProfile() {
   try {
     const result = await apiFetch('/api/v1/profiles/student')
@@ -21,7 +24,12 @@ export async function getMyTeacherProfile() {
 // Get all class sections assigned to the current teacher
 export async function getMyAssignedSections() {
   try {
-    const result = await apiFetch('/api/v1/profiles/assigned-sections', { cache: false, forceRefresh: true })
+    const result = await apiFetch('/api/v1/profiles/assigned-sections', {
+      cache: true,
+      cacheTtlMs: CACHE_TTL_MS,
+      staleWindowMs: STALE_WINDOW_MS,
+      staleWhileRevalidate: true,
+    })
     return { data: result.data, error: null }
   } catch (err) {
     return { data: [], error: err }
@@ -41,7 +49,12 @@ export async function getMyEnrolledSections() {
 // Get all students enrolled in a specific class section
 export async function getStudentsInSection(classSectionId) {
   try {
-    const result = await apiFetch(`/api/v1/profiles/sections/${classSectionId}/students`, { cache: false, forceRefresh: true })
+    const result = await apiFetch(`/api/v1/profiles/sections/${classSectionId}/students`, {
+      cache: true,
+      cacheTtlMs: CACHE_TTL_MS,
+      staleWindowMs: STALE_WINDOW_MS,
+      staleWhileRevalidate: true,
+    })
     return { data: result.data, meta: result.meta ?? null, error: null }
   } catch (err) {
     return { data: [], meta: null, error: err }
@@ -51,7 +64,12 @@ export async function getStudentsInSection(classSectionId) {
 // Get aggregate stats for the current teacher
 export async function getMyTeacherStats() {
   try {
-    const result = await apiFetch('/api/v1/profiles/teacher/stats', { cache: false, forceRefresh: true })
+    const result = await apiFetch('/api/v1/profiles/teacher/stats', {
+      cache: true,
+      cacheTtlMs: CACHE_TTL_MS,
+      staleWindowMs: STALE_WINDOW_MS,
+      staleWhileRevalidate: true,
+    })
     return { data: result.data, error: null }
   } catch (err) {
     return { data: null, error: err }

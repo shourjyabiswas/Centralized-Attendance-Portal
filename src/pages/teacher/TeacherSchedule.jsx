@@ -85,8 +85,10 @@ export default function TeacherSchedule() {
     try {
       setError(null);
       const data = await apiFetch('/api/v1/schedules/teacher', {
-        cache: false,
-        forceRefresh: true,
+        cache: true,
+        cacheTtlMs: 2 * 60 * 1000,
+        staleWindowMs: 5 * 60 * 1000,
+        staleWhileRevalidate: true,
       });
       const rawItems = data.data || [];
 

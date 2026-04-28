@@ -4,6 +4,7 @@ import AppLayout from '../../components/shared/AppLayout'
 import { getMyAssignedSections, getMyTeacherStats } from '../../lib/profile'
 import { getTodaySchedule } from '../../lib/schedule'
 import { formatCohort } from '../../lib/format'
+import SpiralLoader from '../../components/shared/Loader'
 
 function parseTime(value) {
   if (!value || typeof value !== 'string') return null;
@@ -147,10 +148,8 @@ export default function TeacherDashboard() {
             </button>
           </div>
           {loading ? (
-            <div className="flex flex-col gap-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />
-              ))}
+            <div className="flex items-center justify-center min-h-[40vh]">
+              <SpiralLoader />
             </div>
           ) : regularClasses.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-8 text-center">

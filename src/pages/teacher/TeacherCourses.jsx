@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import { getMyAssignedSections, getStudentsInSection } from '../../lib/profile'
 import { getSessionsForSection } from '../../lib/attendance'
+import SpiralLoader from '../../components/shared/Loader'
 
 export default function TeacherCourses() {
   const [sections, setSections] = useState([])
@@ -43,10 +44,8 @@ export default function TeacherCourses() {
             </p>
 
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-28 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />
-                ))}
+              <div className="flex items-center justify-center min-h-[40vh]">
+                <SpiralLoader />
               </div>
             ) : sections.length === 0 ? (
               <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-12 text-center">
@@ -122,10 +121,8 @@ export default function TeacherCourses() {
                 Enrolled students
               </h3>
               {loadingDetail ? (
-                <div className="flex flex-col gap-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
-                  ))}
+                <div className="flex items-center justify-center min-h-[30vh]">
+                  <SpiralLoader />
                 </div>
               ) : students.length === 0 ? (
                 <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-8 text-center">
@@ -164,10 +161,8 @@ export default function TeacherCourses() {
                 Recent sessions
               </h3>
               {loadingDetail ? (
-                <div className="flex flex-col gap-2">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="h-10 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
-                  ))}
+                <div className="flex items-center justify-center min-h-[30vh]">
+                  <SpiralLoader />
                 </div>
               ) : sessions.length === 0 ? (
                 <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-8 text-center">
