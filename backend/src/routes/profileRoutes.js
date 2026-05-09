@@ -1,7 +1,17 @@
 import { Router } from 'express'
+import multer from 'multer'
 import { supabaseAdmin } from '../lib/supabase.js'
 
 const router = Router()
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
+const AVATAR_BUCKET = 'profile-avatars'
+const AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp'])
+
+function safeFileName(name) {
+  return String(name || 'avatar')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+}
 
 function normalizeYear(value) {
   if (value == null) return null
@@ -162,6 +172,62 @@ router.get('/me', async (req, res) => {
   }
 })
 
+// POST /api/v1/profile/avatar — upload or replace avatar
+router.post('/avatar', (req, res, next) => {
+  upload.single('avatar')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File size must not exceed 5MB' })
+      }
+      return res.status(400).json({ error: err.message })
+    } else if (err) {
+      return res.status(500).json({ error: 'An unknown error occurred during upload' })
+    }
+    next()
+  })
+}, async (req, res) => {
+  try {
+    const db = supabaseAdmin || req.supabase
+    const file = req.file
+
+    if (!file) {
+      return res.status(400).json({ error: 'avatar file is required' })
+    }
+
+    if (!AVATAR_MIME_TYPES.has(file.mimetype)) {
+      return res.status(400).json({ error: 'Unsupported avatar file type' })
+    }
+
+    const filePath = `avatars/${req.user.id}/${Date.now()}_${safeFileName(file.originalname)}`
+    const { error: uploadError } = await db
+      .storage
+      .from(AVATAR_BUCKET)
+      .upload(filePath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: true,
+      })
+
+    if (uploadError) {
+      return res.status(400).json({ error: uploadError.message })
+    }
+
+    const { data: { publicUrl } } = db.storage.from(AVATAR_BUCKET).getPublicUrl(filePath)
+    const { error: updateError } = await req.supabase
+      .from('profiles')
+      .update({ avatar_url: publicUrl })
+      .eq('id', req.user.id)
+
+    if (updateError) {
+      return res.status(400).json({ error: updateError.message })
+    }
+
+    return res.json({ data: { avatarUrl: publicUrl } })
+  } catch (err) {
+    console.error('POST /profile/avatar error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // GET /api/v1/profile/role — current user's role and admin department
 router.get('/role', async (req, res) => {
   try {
@@ -234,7 +300,8 @@ router.get('/student', async (req, res) => {
         profiles (
           full_name,
           email,
-          college_name
+          college_name,
+          avatar_url
         )
       `)
       .eq('profile_id', req.user.id)
@@ -258,7 +325,8 @@ router.get('/teacher', async (req, res) => {
         profiles (
           full_name,
           email,
-          college_name
+          college_name,
+          avatar_url
         )
       `)
       .eq('profile_id', req.user.id)

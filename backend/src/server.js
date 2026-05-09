@@ -18,6 +18,7 @@ import contactRoutes from './routes/contactRoutes.js'
 import assignmentRoutes from './routes/assignmentRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
 import announcementsRoutes from './routes/announcementsRoutes.js'
+import leaveRoutes from './routes/leaveRoutes.js'
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
@@ -49,6 +50,7 @@ app.use('/api/v1/content', requireAuth, contentRoutes)
 app.use('/api/v1/contacts', requireAuth, contactRoutes)
 app.use('/api/v1/assignments', requireAuth, assignmentRoutes)
 app.use('/api/v1/announcements', requireAuth, announcementsRoutes)
+app.use('/api/v1/leaves', requireAuth, leaveRoutes)
 app.use('/api/v1/admin', requireAuth, requireAdminRole, adminRoutes)
 
 

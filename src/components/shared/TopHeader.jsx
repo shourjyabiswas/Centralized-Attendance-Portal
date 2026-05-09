@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { signOut } from '../../lib/auth'
 import { createAnnouncement, getAnnouncements } from '../../lib/announcements'
-import { apiFetch } from '../../lib/api'
+import LeaveApplicationsPanel from './LeaveApplicationsPanel'
+import { getMyProfile, getMyStudentProfile, getMyTeacherProfile, uploadMyAvatar } from '../../lib/profile'
 
 function formatLocalDateKey(date = new Date()) {
   const year = date.getFullYear()
@@ -51,7 +52,7 @@ function highlightText(text, query) {
 }
 
 export default function TopHeader({ title }) {
-  const { user, role } = useAuth()
+  const { user, role, adminDepartment } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading] = useState(false)
@@ -63,6 +64,13 @@ export default function TopHeader({ title }) {
   const [posting, setPosting] = useState(false)
   const [studentLastSeenAt, setStudentLastSeenAt] = useState(null)
   const [profileFullName, setProfileFullName] = useState(null)
+  const [profileData, setProfileData] = useState(null)
+  const [roleProfile, setRoleProfile] = useState(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileError, setProfileError] = useState(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [isLeaveOpen, setIsLeaveOpen] = useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
 
   const sortedAnnouncements = useMemo(() => {
     return [...announcements].sort((a, b) => {
@@ -124,19 +132,43 @@ export default function TopHeader({ title }) {
       setLoading(false)
     }
 
-    async function loadProfileName() {
+    async function loadProfileDetails() {
+      setProfileLoading(true)
+      setProfileError(null)
+
       try {
-        const resp = await apiFetch('/api/v1/profiles/me', { cache: false })
-        const profile = resp?.data || resp?.data?.data || null
-        if (profile?.full_name) setProfileFullName(profile.full_name)
+        const profileRes = await getMyProfile()
+        if (profileRes.error) {
+          throw profileRes.error
+        }
+
+        const baseProfile = profileRes.data || null
+        setProfileData(baseProfile)
+        if (baseProfile?.full_name) setProfileFullName(baseProfile.full_name)
+
+        if (role === 'student') {
+          const studentRes = await getMyStudentProfile()
+          if (!studentRes.error) {
+            setRoleProfile(studentRes.data)
+          }
+        } else if (role === 'teacher') {
+          const teacherRes = await getMyTeacherProfile()
+          if (!teacherRes.error) {
+            setRoleProfile(teacherRes.data)
+          }
+        } else {
+          setRoleProfile(null)
+        }
       } catch (err) {
-        // ignore
+        setProfileError(err?.message || 'Failed to load profile.')
+      } finally {
+        setProfileLoading(false)
       }
     }
 
     loadAnnouncements()
-    loadProfileName()
-  }, [user?.id, studentLastSeenKey])
+    loadProfileDetails()
+  }, [user?.id, studentLastSeenKey, role])
 
   async function handleSignOut() {
     try {
@@ -157,6 +189,64 @@ export default function TopHeader({ title }) {
     .join('')
     .toUpperCase()
     .slice(0, 2)) || '??'
+
+  const avatarUrl = roleProfile?.profiles?.avatar_url || profileData?.avatar_url || null
+  const profileEmail = profileData?.email || user?.email || ''
+
+  async function handleAvatarChange(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setAvatarUploading(true)
+    setProfileError(null)
+
+    const { data, error: uploadError } = await uploadMyAvatar(file)
+    if (uploadError || !data) {
+      setProfileError(uploadError?.message || 'Failed to upload avatar.')
+      setAvatarUploading(false)
+      return
+    }
+
+    setProfileData((current) => ({
+      ...(current || {}),
+      avatar_url: data.avatarUrl,
+    }))
+    setRoleProfile((current) => current ? {
+      ...current,
+      profiles: {
+        ...(current.profiles || {}),
+        avatar_url: data.avatarUrl,
+      },
+    } : current)
+    setAvatarUploading(false)
+  }
+
+  const detailItems = useMemo(() => {
+    const items = []
+
+    if (role === 'student' && roleProfile) {
+      items.push(
+        { label: 'Department', value: roleProfile.department || '—' },
+        { label: 'Roll number', value: roleProfile.roll_number || '—' },
+        { label: 'Year', value: roleProfile.year_of_study || '—' },
+        { label: 'Section', value: roleProfile.section || '—' },
+        { label: 'Semester', value: roleProfile.current_semester || '—' }
+      )
+    }
+
+    if (role === 'teacher' && roleProfile) {
+      items.push(
+        { label: 'Department', value: roleProfile.department || '—' },
+        { label: 'Employee ID', value: roleProfile.employee_id || '—' }
+      )
+    }
+
+    if (role === 'admin') {
+      items.push({ label: 'Department', value: adminDepartment || '—' })
+    }
+
+    return items
+  }, [role, roleProfile, adminDepartment])
 
   async function handleCreateAnnouncement() {
     if (!newTitle.trim() || !newMessage.trim()) {
@@ -194,6 +284,7 @@ export default function TopHeader({ title }) {
   function toggleAnnouncements() {
     const next = !isOpen
     setIsOpen(next)
+    if (next) setIsProfileOpen(false)
 
     if (next && role === 'student' && studentLastSeenKey && latestAnnouncementTime) {
       localStorage.setItem(studentLastSeenKey, latestAnnouncementTime)
@@ -207,6 +298,21 @@ export default function TopHeader({ title }) {
         {title}
       </h1>
       <div className="flex items-center gap-3 relative">
+        <button
+          type="button"
+          onClick={() => {
+            setIsLeaveOpen((current) => !current)
+            setIsOpen(false)
+            setIsProfileOpen(false)
+          }}
+          className="relative h-9 w-9 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+          title="Leave applications"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+            <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M7 8h10M7 12h10M7 16h6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
         <button
           type="button"
           onClick={toggleAnnouncements}
@@ -230,9 +336,22 @@ export default function TopHeader({ title }) {
           >
             Sign out
           </button>
-          <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center justify-center border border-blue-100 dark:border-blue-900">
-            {initials}
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsProfileOpen((current) => !current)
+              setIsOpen(false)
+              setIsLeaveOpen(false)
+            }}
+            className="relative w-9 h-9 rounded-full border border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center justify-center overflow-hidden"
+            title="Profile"
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Profile avatar" className="h-full w-full object-cover" />
+            ) : (
+              <span>{initials}</span>
+            )}
+          </button>
         </div>
 
         {isOpen && (
@@ -342,6 +461,72 @@ export default function TopHeader({ title }) {
             )}
           </div>
         )}
+
+        {isProfileOpen && (
+          <div className="absolute top-12 right-0 z-40 w-[min(26rem,88vw)] max-h-[70vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-4 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-800 dark:text-white">Profile</p>
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen(false)}
+                className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="h-14 w-14 rounded-full border border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center overflow-hidden">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profile avatar" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-lg font-semibold">{initials}</span>
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">{effectiveName || 'User'}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{profileEmail || '—'}</p>
+                <p className="text-[11px] text-gray-400 mt-1">Role: {role || '—'}</p>
+              </div>
+            </div>
+
+            {profileLoading ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400">Loading profile details...</p>
+            ) : detailItems.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                {detailItems.map((item) => (
+                  <div key={item.label} className="rounded-lg bg-gray-50 dark:bg-gray-800/60 p-2">
+                    <p className="uppercase tracking-[0.18em] font-semibold text-gray-400 dark:text-gray-500">{item.label}</p>
+                    <p className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-gray-400">No additional details available.</p>
+            )}
+
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800/50 flex flex-col gap-2">
+              <label className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Update avatar</label>
+              <input
+                type="file"
+                onChange={handleAvatarChange}
+                accept=".png,.jpg,.jpeg,.webp"
+                className="text-xs text-gray-600 dark:text-gray-300"
+              />
+              {avatarUploading && (
+                <p className="text-[11px] text-gray-400">Uploading...</p>
+              )}
+              {profileError && (
+                <p className="text-[11px] text-red-500">{profileError}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <LeaveApplicationsPanel
+          open={isLeaveOpen}
+          onClose={() => setIsLeaveOpen(false)}
+        />
       </div>
     </header>
   )

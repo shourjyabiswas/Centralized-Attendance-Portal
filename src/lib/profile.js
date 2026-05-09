@@ -12,6 +12,32 @@ export async function getMyStudentProfile() {
   }
 }
 
+export async function getMyProfile() {
+  try {
+    const result = await apiFetch('/api/v1/profiles/me', { cache: false })
+    return { data: result.data, error: null }
+  } catch (err) {
+    return { data: null, error: err }
+  }
+}
+
+export async function uploadMyAvatar(file) {
+  try {
+    const formData = new FormData()
+    formData.append('avatar', file)
+
+    const result = await apiFetch('/api/v1/profiles/avatar', {
+      method: 'POST',
+      body: formData,
+      cache: false,
+    })
+
+    return { data: result.data || null, error: null }
+  } catch (err) {
+    return { data: null, error: err }
+  }
+}
+
 export async function getMyTeacherProfile() {
   try {
     const result = await apiFetch('/api/v1/profiles/teacher')
