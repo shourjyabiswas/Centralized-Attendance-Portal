@@ -694,6 +694,67 @@ router.get('/courses/:id/sections', async (req, res) => {
 })
 
 /**
+ * GET /api/v1/admin/courses/:id/teachers
+ * Get all teachers assigned to a course, grouped by section
+ */
+router.get('/courses/:id/teachers', async (req, res) => {
+  try {
+    const { id: courseId } = req.params
+    const supabase = req.supabase
+
+    // Get all sections for this course with their teacher assignments
+    const { data: sections, error: sectionsError } = await supabase
+      .from('class_sections')
+      .select(`
+        id,
+        section,
+        year_of_study,
+        department,
+        teacher_assignments (
+          id,
+          teacher_id,
+          teacher_profiles (
+            id,
+            employee_id,
+            profiles (full_name)
+          )
+        )
+      `)
+      .eq('course_id', courseId)
+      .order('year_of_study, section')
+
+    if (sectionsError) {
+      return res.status(500).json({ error: sectionsError.message })
+    }
+
+    const result = (sections || []).map((s) => ({
+      sectionId: s.id,
+      section: s.section,
+      yearOfStudy: s.year_of_study,
+      department: s.department,
+      teachers: (s.teacher_assignments || []).map((ta) => {
+        const tp = ta.teacher_profiles
+        const profileData = tp?.profiles
+        const fullName = Array.isArray(profileData)
+          ? profileData[0]?.full_name
+          : profileData?.full_name
+        return {
+          assignmentId: ta.id,
+          teacherId: ta.teacher_id,
+          name: fullName || 'Unknown Teacher',
+          employeeId: tp?.employee_id || null,
+        }
+      }),
+    }))
+
+    return res.json({ data: result })
+  } catch (err) {
+    console.error('GET /admin/courses/:id/teachers error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+/**
  * POST /api/v1/admin/sections/:id/assign-teacher
  * Assign a teacher to a class section
  * Body: { teacherId }

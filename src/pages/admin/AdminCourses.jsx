@@ -11,6 +11,11 @@ export default function AdminCourses() {
   const [formData, setFormData] = useState({ code: '', name: '', department: '', semester: '', type: 'Lecture' })
   const [submitting, setSubmitting] = useState(false)
 
+  // Expandable teacher details
+  const [expandedCourseId, setExpandedCourseId] = useState(null)
+  const [teacherData, setTeacherData] = useState({}) // { [courseId]: sectionData[] }
+  const [loadingTeachers, setLoadingTeachers] = useState(null)
+
   useEffect(() => {
     fetchCourses()
   }, [])
@@ -19,7 +24,11 @@ export default function AdminCourses() {
     try {
       setLoading(true)
       const data = await apiFetch('/api/v1/admin/courses')
-      setCourses(data.data || [])
+      const COMMON_CODES = ['LIB', 'REM', 'LUNCH', 'LIBRARY', 'REMEDIAL']
+      const filtered = (data.data || []).filter(
+        (c) => !COMMON_CODES.includes((c.code || '').trim().toUpperCase())
+      )
+      setCourses(filtered)
     } catch (err) {
       setError(err.message)
       console.error('Error fetching courses:', err)
@@ -61,10 +70,38 @@ export default function AdminCourses() {
         method: 'DELETE',
       })
       setError(null)
+      // Clean up expanded state if this course was expanded
+      if (expandedCourseId === courseId) setExpandedCourseId(null)
+      const newTeacherData = { ...teacherData }
+      delete newTeacherData[courseId]
+      setTeacherData(newTeacherData)
       await fetchCourses()
     } catch (err) {
       setError(err.message)
       console.error('Error removing course:', err)
+    }
+  }
+
+  async function handleToggleExpand(courseId) {
+    if (expandedCourseId === courseId) {
+      setExpandedCourseId(null)
+      return
+    }
+
+    setExpandedCourseId(courseId)
+
+    // Fetch teacher data if not already cached
+    if (!teacherData[courseId]) {
+      try {
+        setLoadingTeachers(courseId)
+        const resp = await apiFetch(`/api/v1/admin/courses/${courseId}/teachers`)
+        setTeacherData((prev) => ({ ...prev, [courseId]: resp.data || [] }))
+      } catch (err) {
+        console.error('Error fetching teachers for course:', err)
+        setTeacherData((prev) => ({ ...prev, [courseId]: [] }))
+      } finally {
+        setLoadingTeachers(null)
+      }
     }
   }
 
@@ -83,7 +120,7 @@ export default function AdminCourses() {
       <div style={{ width: '100%' }} className="flex flex-col gap-6">
         <div>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Manage Courses</h2>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">View and create courses</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">View and create courses · Click a row to see assigned teachers</p>
         </div>
 
         {error && (
@@ -179,6 +216,7 @@ export default function AdminCourses() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400" style={{ width: '28px' }}></th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Code</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Name</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Department</th>
@@ -188,27 +226,23 @@ export default function AdminCourses() {
                   </tr>
                 </thead>
                 <tbody>
-                  {courses.map((course) => (
-                    <tr key={course.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{course.code}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{course.name}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{course.department}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{course.semester}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${course.type === 'Lab' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                          {course.type || 'Lecture'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleRemoveCourse(course.id)}
-                          className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {courses.map((course) => {
+                    const isExpanded = expandedCourseId === course.id
+                    const sections = teacherData[course.id] || []
+                    const isLoadingThis = loadingTeachers === course.id
+
+                    return (
+                      <CourseRow
+                        key={course.id}
+                        course={course}
+                        isExpanded={isExpanded}
+                        sections={sections}
+                        isLoading={isLoadingThis}
+                        onToggle={() => handleToggleExpand(course.id)}
+                        onRemove={() => handleRemoveCourse(course.id)}
+                      />
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -216,5 +250,155 @@ export default function AdminCourses() {
         )}
       </div>
     </AppLayout>
+  )
+}
+
+function CourseRow({ course, isExpanded, sections, isLoading, onToggle, onRemove }) {
+  // Count total teachers across all sections
+  const totalTeachers = sections.reduce((acc, s) => acc + (s.teachers?.length || 0), 0)
+
+  return (
+    <>
+      <tr
+        className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/30 cursor-pointer transition-colors"
+        onClick={onToggle}
+      >
+        <td className="px-4 py-3 text-gray-400 dark:text-gray-500">
+          <span
+            style={{
+              display: 'inline-block',
+              transition: 'transform 0.2s ease',
+              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              fontSize: '10px',
+            }}
+          >
+            ▶
+          </span>
+        </td>
+        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{course.code}</td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{course.name}</td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{course.department}</td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{course.semester}</td>
+        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${course.type === 'Lab' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+            {course.type || 'Lecture'}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove() }}
+            className="text-xs text-red-600 dark:text-red-400 hover:underline font-medium"
+          >
+            Remove
+          </button>
+        </td>
+      </tr>
+
+      {/* Expanded detail row */}
+      {isExpanded && (
+        <tr className="border-b border-gray-100 dark:border-gray-800">
+          <td colSpan={7} className="px-0 py-0">
+            <div
+              style={{
+                background: 'linear-gradient(135deg, rgba(59,130,246,0.04) 0%, rgba(139,92,246,0.04) 100%)',
+                borderLeft: '3px solid rgba(59,130,246,0.5)',
+              }}
+              className="px-6 py-4"
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2 py-3">
+                  <div
+                    style={{
+                      width: '14px',
+                      height: '14px',
+                      border: '2px solid rgba(59,130,246,0.3)',
+                      borderTopColor: 'rgb(59,130,246)',
+                      borderRadius: '50%',
+                      animation: 'spin 0.6s linear infinite',
+                    }}
+                  />
+                  <span className="text-xs text-gray-400">Loading teacher assignments…</span>
+                  <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+                </div>
+              ) : sections.length === 0 ? (
+                <p className="text-xs text-gray-400 dark:text-gray-500 py-2">
+                  No sections or teacher assignments found for this course.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+                      Teacher Assignments
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold">
+                      {totalTeachers} teacher{totalTeachers !== 1 ? 's' : ''} · {sections.length} section{sections.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {sections.map((sec) => (
+                    <div
+                      key={sec.sectionId}
+                      className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl px-4 py-3"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                          Section {sec.section}
+                        </span>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                          {sec.department} · {sec.yearOfStudy} year
+                        </span>
+                      </div>
+
+                      {sec.teachers.length === 0 ? (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                          No teacher assigned
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {sec.teachers.map((t) => (
+                            <div
+                              key={t.assignmentId}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
+                            >
+                              <div
+                                style={{
+                                  width: '22px',
+                                  height: '22px',
+                                  borderRadius: '50%',
+                                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  color: '#fff',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {(t.name || '?')[0].toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="text-xs font-medium text-gray-800 dark:text-gray-200 leading-tight">
+                                  {t.name}
+                                </p>
+                                {t.employeeId && (
+                                  <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
+                                    ID: {t.employeeId}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
