@@ -121,6 +121,21 @@ export async function sendOtpForSignup(email, fullName = null) {
   return { data, error }
 }
 
+export async function sendOtpForLogin(email) {
+  if (!isAllowedEmail(email)) {
+    return { data: null, error: new Error('Only heritageit.edu.in / heritageit.edu accounts are allowed.') }
+  }
+
+  const { data, error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false,
+    },
+  })
+
+  return { data, error }
+}
+
 export async function verifyOtp(email, token) {
   if (!isAllowedEmail(email)) {
     return { data: null, error: new Error('Only heritageit.edu.in / heritageit.edu accounts are allowed.') }

@@ -12,6 +12,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
   const [fullName, setFullName] = useState('')
+  const [nameTouched, setNameTouched] = useState(false)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -33,21 +34,45 @@ export default function AuthPage() {
     if (user && role) navigate('/dashboard', { replace: true })
   }, [user, role, loading, navigate])
 
+  function toTitleCase(value) {
+    return value
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase() + part.slice(1))
+      .join(' ')
+  }
+
+  function extractNameFromEmail(rawEmail) {
+    const emailValue = String(rawEmail || '').trim().toLowerCase()
+    const local = emailValue.split('@')[0] || ''
+    const parts = local.split('.').filter(Boolean)
+    if (parts.length < 2) return ''
+
+    const firstName = parts[0]
+    const lastName = parts[1]
+    return toTitleCase(`${firstName} ${lastName}`)
+  }
+
   function handleEmailChange(e) {
-    setEmail(e.target.value)
+    const nextEmail = e.target.value
+    setEmail(nextEmail)
     setError(null)
     setMessage(null)
     if (otpSent) {
       setOtpSent(false)
       setOtp('')
     }
+    if (tab === 'signup' && !nameTouched) {
+      const derived = extractNameFromEmail(nextEmail)
+      if (derived) setFullName(derived)
+    }
   }
 
-  function handlePasswordChange(e) {
-    setPassword(e.target.value)
-    if (error) setError(null)
-    if (message) setMessage(null)
-  }
+  useEffect(() => {
+    if (tab !== 'signup' || nameTouched) return
+    const derived = extractNameFromEmail(email)
+    if (derived) setFullName(derived)
+  }, [tab, email, nameTouched])
 
   async function handlePasswordLogin() {
     setError(null)
@@ -99,7 +124,6 @@ export default function AuthPage() {
       setSubmitting(false)
       return
     }
-
     const { error: updateError } = await updateUserAfterOtp(password, fullName)
     if (updateError) {
       setError(updateError.message || 'Failed to set password.')
@@ -143,6 +167,7 @@ export default function AuthPage() {
                 setPassword('')
                 setOtp('')
                 setOtpSent(false)
+                setNameTouched(false)
               }}
               className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
                 tab === t
@@ -161,7 +186,10 @@ export default function AuthPage() {
             <input
               type="text"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setNameTouched(true)
+                setFullName(e.target.value)
+              }}
               placeholder="Full name"
               className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -177,12 +205,12 @@ export default function AuthPage() {
           <input
             type="password"
             value={password}
-            onChange={handlePasswordChange}
+            onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
 
-          {tab === 'signup' && otpSent && (
+          {otpSent && (
             <input
               type="text"
               value={otp}
