@@ -2,7 +2,16 @@
 import { supabase } from './supabase'
 import { apiFetch } from './api'
 
-const ALLOWED_DOMAIN = '@heritageit.edu.in'
+const ALLOWED_DOMAINS = ['@heritageit.edu.in', '@heritageit.edu']
+
+function normalizeEmail(rawEmail) {
+  return String(rawEmail || '').trim().toLowerCase()
+}
+
+function isAllowedEmail(email) {
+  const normalized = normalizeEmail(email)
+  return ALLOWED_DOMAINS.some((domain) => normalized.endsWith(domain))
+}
 
 // Sign in with Google OAuth — stays client-side
 export async function signInWithGoogle() {
@@ -26,11 +35,11 @@ export async function handleAuthCallback() {
 
   const email = session.user.email
 
-  if (!email.endsWith(ALLOWED_DOMAIN)) {
+  if (!isAllowedEmail(email)) {
     await supabase.auth.signOut()
     return {
       user: null,
-      error: new Error('Only @heritageit.edu.in accounts are allowed.')
+      error: new Error('Only heritageit.edu.in / heritageit.edu accounts are allowed.')
     }
   }
 
@@ -89,23 +98,52 @@ export function onAuthStateChange(callback) {
 }
 
 export async function signInWithEmail(email, password) {
-  if (!email.endsWith(ALLOWED_DOMAIN)) {
-    return { data: null, error: new Error('Only @heritageit.edu.in accounts are allowed.') }
+  if (!isAllowedEmail(email)) {
+    return { data: null, error: new Error('Only heritageit.edu.in / heritageit.edu accounts are allowed.') }
   }
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   return { data, error }
 }
 
-export async function signUpWithEmail(email, password, fullName) {
-  if (!email.endsWith(ALLOWED_DOMAIN)) {
-    return { data: null, error: new Error('Only @heritageit.edu.in accounts are allowed.') }
+export async function sendOtpForSignup(email, fullName = null) {
+  if (!isAllowedEmail(email)) {
+    return { data: null, error: new Error('Only heritageit.edu.in / heritageit.edu accounts are allowed.') }
   }
-  const { data, error } = await supabase.auth.signUp({
+
+  const { data, error } = await supabase.auth.signInWithOtp({
     email,
-    password,
     options: {
-      data: { full_name: fullName }
-    }
+      shouldCreateUser: true,
+      data: fullName ? { full_name: fullName } : undefined,
+    },
   })
+
+  return { data, error }
+}
+
+export async function verifyOtp(email, token) {
+  if (!isAllowedEmail(email)) {
+    return { data: null, error: new Error('Only heritageit.edu.in / heritageit.edu accounts are allowed.') }
+  }
+
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  })
+
+  return { data, error }
+}
+
+export async function updateUserAfterOtp(password, fullName = null) {
+  const updatePayload = {
+    password: String(password || '').trim(),
+  }
+
+  if (fullName) {
+    updatePayload.data = { full_name: fullName.trim() }
+  }
+
+  const { data, error } = await supabase.auth.updateUser(updatePayload)
   return { data, error }
 }
