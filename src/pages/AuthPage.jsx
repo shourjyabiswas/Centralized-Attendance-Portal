@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signInWithGoogle, signInWithEmail, signUpWithEmail, handleAuthCallback } from '../lib/auth'
+import { signInWithGoogle, handleAuthCallback, signInWithEmail, sendOtpForSignup, verifyOtp, updateUserAfterOtp } from '../lib/auth'
 import { useAuth } from '../hooks/useAuth'
 
 export default function AuthPage() {
@@ -10,10 +10,12 @@ export default function AuthPage() {
   const [tab, setTab] = useState('login') // 'login' | 'signup'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [otp, setOtp] = useState('')
   const [fullName, setFullName] = useState('')
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
 
   useEffect(() => {
     const isCallback = window.location.pathname === '/auth/callback'
@@ -31,23 +33,81 @@ export default function AuthPage() {
     if (user && role) navigate('/dashboard', { replace: true })
   }, [user, role, loading, navigate])
 
-  async function handleEmailAuth() {
+  function handleEmailChange(e) {
+    setEmail(e.target.value)
+    setError(null)
+    setMessage(null)
+    if (otpSent) {
+      setOtpSent(false)
+      setOtp('')
+    }
+  }
+
+  function handlePasswordChange(e) {
+    setPassword(e.target.value)
+    if (error) setError(null)
+    if (message) setMessage(null)
+  }
+
+  async function handlePasswordLogin() {
     setError(null)
     setMessage(null)
     if (!email.trim() || !password.trim()) return setError('Please fill in all fields.')
-    if (tab === 'signup' && !fullName.trim()) return setError('Please enter your full name.')
     setSubmitting(true)
 
-    if (tab === 'login') {
-      const { error } = await signInWithEmail(email.trim(), password)
-      if (error) { setError(error.message); setSubmitting(false); return }
-      navigate('/dashboard', { replace: true })
-    } else {
-      const { error } = await signUpWithEmail(email.trim(), password, fullName.trim())
-      if (error) { setError(error.message); setSubmitting(false); return }
-      setMessage('Account created! Check your email to confirm, then log in.')
-      setTab('login')
+    const { error } = await signInWithEmail(email.trim(), password)
+    if (error) {
+      setError(error.message)
+      setSubmitting(false)
+      return
     }
+
+    navigate('/dashboard', { replace: true })
+    setSubmitting(false)
+  }
+
+  async function handleSendSignupOtp() {
+    setError(null)
+    setMessage(null)
+    if (!email.trim() || !fullName.trim() || !password.trim()) {
+      return setError('Please fill in all fields.')
+    }
+
+    setSubmitting(true)
+    const { error } = await sendOtpForSignup(email.trim(), fullName.trim())
+    if (error) {
+      setError(error.message || 'Failed to send OTP.')
+      setSubmitting(false)
+      return
+    }
+
+    setOtpSent(true)
+    setMessage('OTP sent. Check your email for the 6-digit code.')
+    setSubmitting(false)
+  }
+
+  async function handleVerifyOtp() {
+    setError(null)
+    setMessage(null)
+    if (!email.trim() || !otp.trim()) return setError('Enter your email and the OTP code.')
+    if (otp.trim().length !== 6) return setError('OTP must be 6 digits.')
+
+    setSubmitting(true)
+    const { error } = await verifyOtp(email.trim(), otp.trim())
+    if (error) {
+      setError(error.message)
+      setSubmitting(false)
+      return
+    }
+
+    const { error: updateError } = await updateUserAfterOtp(password, fullName)
+    if (updateError) {
+      setError(updateError.message || 'Failed to set password.')
+      setSubmitting(false)
+      return
+    }
+
+    navigate('/onboarding', { replace: true })
     setSubmitting(false)
   }
 
@@ -76,7 +136,14 @@ export default function AuthPage() {
           {['login', 'signup'].map((t) => (
             <button
               key={t}
-              onClick={() => { setTab(t); setError(null); setMessage(null) }}
+              onClick={() => {
+                setTab(t)
+                setError(null)
+                setMessage(null)
+                setPassword('')
+                setOtp('')
+                setOtpSent(false)
+              }}
               className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
                 tab === t
                   ? 'bg-white dark:bg-gray-900 text-gray-800 dark:text-white shadow-sm'
@@ -102,29 +169,62 @@ export default function AuthPage() {
           <input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={handleEmailChange}
             placeholder="you@heritageit.edu.in"
             className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={handlePasswordChange}
             placeholder="Password"
-            onKeyDown={(e) => e.key === 'Enter' && handleEmailAuth()}
             className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+
+          {tab === 'signup' && otpSent && (
+            <input
+              type="text"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="Enter 6-digit OTP"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-[0.3em] text-center"
+            />
+          )}
 
           {error && <p className="text-xs text-red-500">{error}</p>}
           {message && <p className="text-xs text-green-500">{message}</p>}
 
-          <button
-            onClick={handleEmailAuth}
-            disabled={submitting}
-            className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {submitting ? 'Please wait...' : tab === 'login' ? 'Log in' : 'Create account'}
-          </button>
+          <div className="flex flex-col gap-2">
+            {tab === 'login' ? (
+              <button
+                onClick={handlePasswordLogin}
+                disabled={submitting}
+                className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {submitting ? 'Please wait...' : 'Log in'}
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={handleSendSignupOtp}
+                  disabled={submitting}
+                  className="w-full py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Please wait...' : otpSent ? 'Resend OTP' : 'Send OTP'}
+                </button>
+                {otpSent && (
+                  <button
+                    onClick={handleVerifyOtp}
+                    disabled={submitting}
+                    className="w-full py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? 'Verifying...' : 'Verify & Create account'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* Divider */}
@@ -151,7 +251,7 @@ export default function AuthPage() {
         </button>
 
         <p className="text-xs text-gray-300 dark:text-gray-600 text-center">
-          Only @heritageit.edu.in accounts are permitted
+          Only heritageit.edu.in / heritageit.edu accounts are permitted
         </p>
       </div>
     </div>
