@@ -649,25 +649,29 @@ export default function TeacherAttendance() {
                   <p className="text-sm text-red-500 font-medium px-2">{error}</p>
                 )}
 
-                <div className="sticky bottom-4 mt-6 bg-gray-900/95 dark:bg-white/95 backdrop-blur-md border border-gray-800 dark:border-gray-200 rounded-2xl p-4 flex items-center justify-between shadow-xl shadow-black/10 dark:shadow-white/10 z-10">
-                  <div className="flex gap-4">
-                    <div className="flex flex-col">
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Present</span>
-                      <span className="text-lg font-bold text-green-400 dark:text-green-600">{presentCount}</span>
+                {/* Spacer to prevent content from being hidden behind the fixed bar */}
+                <div className="h-28 sm:h-20" />
+
+                {/* Fixed submission bar — sits above BottomNav on mobile */}
+                <div className="fixed bottom-16 md:bottom-0 left-0 right-0 bg-gray-900/95 dark:bg-white/95 backdrop-blur-md border-t border-gray-800 dark:border-gray-200 px-4 py-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 shadow-xl shadow-black/10 dark:shadow-white/10 z-40">
+                  <div className="flex gap-5 sm:gap-4">
+                    <div className="flex flex-col items-center sm:items-start">
+                      <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">Present</span>
+                      <span className="text-base sm:text-lg font-bold text-green-400 dark:text-green-600">{presentCount}</span>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Absent</span>
-                      <span className="text-lg font-bold text-red-400 dark:text-red-600">{absentCount}</span>
+                    <div className="flex flex-col items-center sm:items-start">
+                      <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">Absent</span>
+                      <span className="text-base sm:text-lg font-bold text-red-400 dark:text-red-600">{absentCount}</span>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Unmarked</span>
-                      <span className="text-lg font-bold text-gray-300 dark:text-gray-700">{unmarkedCount}</span>
+                    <div className="flex flex-col items-center sm:items-start">
+                      <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">Unmarked</span>
+                      <span className="text-base sm:text-lg font-bold text-gray-300 dark:text-gray-700">{unmarkedCount}</span>
                     </div>
                   </div>
                   <button
                     onClick={handleSubmit}
                     disabled={!allMarked || submitting}
-                    className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold transition-colors disabled:cursor-not-allowed shadow-lg shadow-blue-600/30 disabled:shadow-none"
+                    className="w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm sm:text-base font-semibold transition-colors disabled:cursor-not-allowed shadow-lg shadow-blue-600/30 disabled:shadow-none"
                   >
                     {submitting ? 'Submitting...' : 'Submit Records'}
                   </button>

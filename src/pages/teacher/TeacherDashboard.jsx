@@ -201,7 +201,7 @@ export default function TeacherDashboard() {
                 return (
                   <div
                     key={cls.id}
-                    className={`${color.bg} border ${color.border} rounded-2xl px-5 py-4 flex items-center justify-between transition-all ${isDone ? 'opacity-50' : 'hover:scale-[1.01]'}`}
+                    className={`${color.bg} border ${color.border} rounded-2xl px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0 transition-all ${isDone ? 'opacity-50' : 'hover:scale-[1.01]'}`}
                   >
                     <div className="flex items-center gap-4">
                       {/* Color dot / timeline indicator */}

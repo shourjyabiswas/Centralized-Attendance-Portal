@@ -286,21 +286,21 @@ export default function StudentAttendanceHeatmap() {
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-[1.55fr_0.9fr]">
-            <div className="rounded-[2rem] bg-[#151515] p-4 md:p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)] border border-white/5">
-              <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="rounded-[1.5rem] md:rounded-[2rem] bg-[#151515] p-3 md:p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)] border border-white/5 overflow-hidden">
+              <div className="flex flex-col gap-3 mb-4">
                 <div>
-                  <h2 className="text-xl font-extrabold tracking-tight text-white">Attendance History</h2>
+                  <h2 className="text-lg md:text-xl font-extrabold tracking-tight text-white">Attendance History</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-white/55">
                     <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#22c55e]" /> {monthStats.attended} present</span>
                     <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#aa1433]" /> {monthStats.missed} absent</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center gap-4">
                   <button
                     type="button"
                     onClick={() => setViewDate((current) => addMonths(current, -1))}
-                    className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center"
+                    className="h-8 w-8 md:h-9 md:w-9 rounded-full border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center shrink-0"
                     aria-label="Previous month"
                   >
                     ‹
@@ -311,7 +311,7 @@ export default function StudentAttendanceHeatmap() {
                   <button
                     type="button"
                     onClick={() => setViewDate((current) => addMonths(current, 1))}
-                    className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center"
+                    className="h-8 w-8 md:h-9 md:w-9 rounded-full border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center shrink-0"
                     aria-label="Next month"
                   >
                     ›
@@ -329,7 +329,7 @@ export default function StudentAttendanceHeatmap() {
                 <div className="grid grid-cols-7 gap-1.5 md:gap-2">
                   {calendarCells.map((date, index) => {
                     if (!date) {
-                      return <div key={`empty-${index}`} className="aspect-square rounded-xl bg-[#242424] border border-white/5" />
+                      return <div key={`empty-${index}`} className="aspect-square rounded-lg md:rounded-xl bg-[#242424] border border-white/5" />
                     }
 
                     const dateKey = getLocalDateKey(date)
@@ -345,14 +345,15 @@ export default function StudentAttendanceHeatmap() {
                         key={dateKey}
                         type="button"
                         onClick={() => setSelectedDateKey(dateKey)}
-                        className={`aspect-square rounded-xl border transition-all duration-200 flex flex-col items-center justify-center gap-1 relative overflow-hidden ${styles.cell} ${isSelected ? `ring-4 ${styles.ring} ring-offset-0 scale-[1.03]` : 'hover:border-white/15 hover:bg-white/7'}`}
+                        className={`aspect-square rounded-lg md:rounded-xl border transition-all duration-200 flex flex-col items-center justify-center p-0.5 md:p-1 gap-0.5 relative overflow-hidden ${styles.cell} ${isSelected ? `ring-2 md:ring-4 ${styles.ring} ring-offset-0 scale-[1.03]` : 'hover:border-white/15 hover:bg-white/7'}`}
                         title={hasClass ? `${day.label}: ${day.percentage}% attendance` : 'No class'}
                       >
-                        <span className={`text-[11px] font-medium ${hasClass ? 'text-white/85' : 'text-white/18'}`}>{dayNumber}</span>
-                        <span className={`text-[0.62rem] leading-none font-bold ${hasClass ? 'text-white/85' : 'text-white/18'}`}>
-                          {hasClass ? `${day.percentage}%` : ' '}
-                        </span>
-
+                        <span className={`text-[9px] md:text-[11px] font-medium leading-none ${hasClass ? 'text-white/85' : 'text-white/18'}`}>{dayNumber}</span>
+                        {hasClass && (
+                          <span className={`text-[8px] md:text-[0.62rem] leading-none font-bold text-white/85`}>
+                            {day.percentage}%
+                          </span>
+                        )}
                       </button>
                     )
                   })}

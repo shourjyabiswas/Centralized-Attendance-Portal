@@ -639,7 +639,12 @@ export default function AdminSchedule() {
 
   return (
     <AppLayout title="Schedule Builder">
-      <div className="flex flex-col gap-5 w-full max-w-[1500px] mx-auto relative" style={{ height: 'calc(100vh - 100px)' }}>
+      <div className="md:hidden flex flex-col items-center justify-center h-full text-center p-8">
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-16 h-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+        <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">Desktop Required</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Schedule management involves complex grid interactions and is not possible to edit on mobile devices. Please use a larger screen.</p>
+      </div>
+      <div className="hidden md:flex flex-col gap-5 w-full max-w-[1500px] mx-auto relative" style={{ height: 'calc(100vh - 100px)' }}>
 
         {/* Toast Notifications */}
         <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none">

@@ -367,7 +367,7 @@ export default function TopHeader({ title }) {
         {isOpen && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setIsOpen(false)} />
-            <div className="absolute top-12 right-0 z-40 w-[min(28rem,88vw)] max-h-[70vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-4 flex flex-col gap-4">
+            <div className="fixed top-16 left-4 right-4 md:absolute md:top-12 md:left-auto md:right-0 z-40 md:w-[28rem] max-h-[70vh] md:max-h-[80vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">Announcements</p>
                 <button
@@ -481,7 +481,7 @@ export default function TopHeader({ title }) {
         {isProfileOpen && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setIsProfileOpen(false)} />
-            <div className="absolute top-12 right-0 z-40 w-[min(26rem,88vw)] max-h-[70vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-4 flex flex-col gap-4">
+            <div className="fixed top-16 left-4 right-4 md:absolute md:top-12 md:left-auto md:right-0 z-40 md:w-[26rem] max-h-[70vh] md:max-h-[80vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">Profile</p>
                 <button

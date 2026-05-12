@@ -4,11 +4,11 @@ import BottomNav from './BottomNav'
 
 export default function AppLayout({ title, children }) {
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+    <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-gray-900">
       <Sidebar />
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <TopHeader title={title} />
-        <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '24px', boxSizing: 'border-box' }}>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-20 md:pb-6 box-border">
           {children}
         </main>
       </div>

@@ -36,11 +36,11 @@ const TripleActivityRings = ({ overall = 0, lecture = 0, lab = 0, size = 280 }) 
   const c3 = 2 * Math.PI * r3;
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+    <div className="relative flex items-center justify-center aspect-square w-full" style={{ maxWidth: size }}>
       {/* Background glow */}
       <div className="absolute inset-0 rounded-full opacity-20 blur-3xl bg-gradient-to-tr from-emerald-500 via-cyan-500 to-blue-500" />
       
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90 filter drop-shadow-xl z-10">
+      <svg width="100%" height="100%" viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90 filter drop-shadow-xl z-10">
         {/* Tracks */}
         <circle cx={center} cy={center} r={r1} fill="none" stroke="#1a2e25" strokeWidth={strokeWidth} strokeLinecap="round" />
         <circle cx={center} cy={center} r={r2} fill="none" stroke="#152636" strokeWidth={strokeWidth} strokeLinecap="round" />
@@ -128,8 +128,11 @@ const NumberCounter = ({ value, duration = 1.5, className = "" }) => {
 
 // 3. Smooth & Sexy Holographic Trend Chart
 const HolographicTrendChart = ({ dailyData }) => {
-  // Filter only days that actually had classes so the trend is meaningful, take last 14 active days
-  const activeDays = dailyData.filter(d => d.total > 0).slice(-14);
+  // Filter only days that actually had classes so the trend is meaningful
+  // Show fewer bars on mobile to prevent date label overlap
+  const allActiveDays = dailyData.filter(d => d.total > 0);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+  const activeDays = allActiveDays.slice(isMobile ? -7 : -14);
   
   if (activeDays.length === 0) {
     return (
@@ -140,13 +143,13 @@ const HolographicTrendChart = ({ dailyData }) => {
   }
 
   return (
-    <div className="w-full h-56 mt-4 relative flex items-end justify-between gap-2 md:gap-3 pb-8 border-b border-white/5">
+    <div className="w-full h-56 mt-4 relative flex items-end justify-between gap-1.5 sm:gap-2 md:gap-3 pb-12 sm:pb-8 border-b border-white/5">
       {/* Ambient background glow */}
       <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 to-transparent pointer-events-none rounded-t-3xl" />
       
       {/* Horizontal grid lines */}
-      <div className="absolute inset-x-0 bottom-8 top-0 flex flex-col justify-between pointer-events-none z-0">
-        {[100, 75, 50, 25, 0].map(pct => (
+      <div className="absolute inset-x-0 bottom-12 sm:bottom-8 top-0 flex flex-col justify-between pointer-events-none z-0">
+        {[100, 75, 50, 25].map(pct => (
           <div key={pct} className="w-full flex items-center gap-4">
             <span className="text-[9px] font-bold text-white/20 w-6 text-right">{pct}%</span>
             <div className="flex-1 border-t border-white/5 border-dashed" />
@@ -154,7 +157,7 @@ const HolographicTrendChart = ({ dailyData }) => {
         ))}
       </div>
 
-      <div className="relative flex-1 flex items-end justify-between h-[calc(100%-2rem)] z-10 px-2 sm:px-8">
+      <div className="relative flex-1 flex items-end justify-between h-[calc(100%-3rem)] sm:h-[calc(100%-2rem)] z-10 px-1 sm:px-8">
         {activeDays.map((day, i) => {
           const { present, absent, late, total } = day;
           const pct = Math.round((present / total) * 100);
@@ -172,12 +175,13 @@ const HolographicTrendChart = ({ dailyData }) => {
           }
 
           return (
-            <div key={day.date} className="relative h-full flex flex-col justify-end group cursor-pointer w-full max-w-[28px]">
+            <div key={day.date} className="relative h-full flex flex-col justify-end group cursor-pointer w-full min-w-[12px] max-w-[28px]">
               
               {/* Beautiful floating tooltip */}
-              <div className="absolute bottom-[calc(100%+15px)] left-1/2 -translate-x-1/2 mb-2 w-max 
+              <div className={`absolute bottom-[calc(100%+15px)] mb-2 w-max 
+                              ${i < 3 ? 'left-[-10px]' : i > activeDays.length - 4 ? 'right-[-10px]' : 'left-1/2 -translate-x-1/2'}
                               opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 
-                              transition-all duration-300 pointer-events-none z-50">
+                              transition-all duration-300 pointer-events-none z-50`}>
                 <div className="bg-[#1a1a24]/90 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl p-4 flex flex-col items-center">
                   <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">
                     {new Date(day.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
@@ -190,7 +194,8 @@ const HolographicTrendChart = ({ dailyData }) => {
                   </div>
                 </div>
                 {/* Tooltip triangle */}
-                <div className="w-3 h-3 bg-[#1a1a24]/90 border-b border-r border-white/10 absolute -bottom-1.5 left-1/2 -translate-x-1/2 rotate-45" />
+                <div className={`w-3 h-3 bg-[#1a1a24]/90 border-b border-r border-white/10 absolute -bottom-1.5 rotate-45 
+                                ${i < 3 ? 'left-5' : i > activeDays.length - 4 ? 'right-5' : 'left-1/2 -translate-x-1/2'}`} />
               </div>
 
               {/* The Holographic Pill */}
@@ -215,7 +220,7 @@ const HolographicTrendChart = ({ dailyData }) => {
               />
 
               {/* Date Label */}
-              <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white/40 whitespace-nowrap">
+              <span className="absolute -bottom-9 sm:-bottom-7 left-1/2 -translate-x-1/2 text-[8px] sm:text-[10px] font-bold text-white/40 whitespace-nowrap origin-center -rotate-45 sm:rotate-0">
                 {new Date(day.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
               </span>
             </div>
