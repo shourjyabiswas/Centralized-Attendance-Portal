@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 import { requireAuth } from './middleware/authMiddleware.js'
 import { requireAdminRole } from './middleware/requireAdminRole.js'
+import { requireCronSecret } from './middleware/requireCronSecret.js'
 import profileRoutes from './routes/profileRoutes.js'
 import attendanceRoutes from './routes/attendanceRoutes.js'
 import scheduleRoutes from './routes/scheduleRoutes.js'
@@ -19,6 +20,7 @@ import assignmentRoutes from './routes/assignmentRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
 import announcementsRoutes from './routes/announcementsRoutes.js'
 import leaveRoutes from './routes/leaveRoutes.js'
+import cronRoutes from './routes/cronRoutes.js'
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
@@ -52,6 +54,7 @@ app.use('/api/v1/assignments', requireAuth, assignmentRoutes)
 app.use('/api/v1/announcements', requireAuth, announcementsRoutes)
 app.use('/api/v1/leaves', requireAuth, leaveRoutes)
 app.use('/api/v1/admin', requireAuth, requireAdminRole, adminRoutes)
+app.use('/api/cron', requireCronSecret, cronRoutes)
 
 
 // 404 handler
