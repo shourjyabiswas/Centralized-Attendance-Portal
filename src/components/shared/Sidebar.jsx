@@ -68,7 +68,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`hidden md:flex flex-col shrink-0 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 py-6 transition-all duration-300 ease-in-out ${
+      className={`hidden md:flex flex-col shrink-0 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 py-6 transition-all duration-300 ease-in-out z-50 ${
         collapsed ? 'w-[60px] px-1.5' : 'w-52 px-3'
       }`}
     >

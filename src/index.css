@@ -159,16 +159,7 @@ code {
   border-radius: 10px;
 }
 
-.attendance-submit-bar {
-  left: 0;
-}
-
-@media (min-width: 768px) {
-  .attendance-submit-bar {
-    left: calc(var(--sidebar-width, 0px) + var(--sidebar-border, 0px));
-    width: calc(100% - var(--sidebar-width, 0px) - var(--sidebar-border, 0px));
-  }
-}
+/* Attendance submit bar positioning is now handled via inline styles to ensure sync with sidebar width variable */
 
 /* ── Premium Dashboard Animations ─────────────────────────────── */
 

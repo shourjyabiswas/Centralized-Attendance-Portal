@@ -356,7 +356,36 @@ export default function TeacherAttendance() {
     : sections
 
   return (
-    <AppLayout title="Attendance">
+    <AppLayout
+      title="Attendance"
+      bottomBar={
+        isSessionActive && activeSection && students.length > 0 && (
+          <div className="attendance-submit-bar bg-slate-900/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-800/80 px-4 py-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 shadow-xl shadow-black/20 w-full">
+            <div className="flex gap-5 sm:gap-4">
+              <div className="flex flex-col items-center sm:items-start">
+                <span className="text-[10px] sm:text-xs text-slate-400">Present</span>
+                <span className="text-base sm:text-lg font-bold text-green-300">{presentCount}</span>
+              </div>
+              <div className="flex flex-col items-center sm:items-start">
+                <span className="text-[10px] sm:text-xs text-slate-400">Absent</span>
+                <span className="text-base sm:text-lg font-bold text-red-300">{absentCount}</span>
+              </div>
+              <div className="flex flex-col items-center sm:items-start">
+                <span className="text-[10px] sm:text-xs text-slate-400">Unmarked</span>
+                <span className="text-base sm:text-lg font-bold text-slate-200">{unmarkedCount}</span>
+              </div>
+            </div>
+            <button
+              onClick={handleSubmit}
+              disabled={!allMarked || submitting}
+              className="w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-sm sm:text-base font-semibold transition-colors disabled:cursor-not-allowed shadow-lg shadow-blue-600/30 disabled:shadow-none"
+            >
+              {submitting ? 'Submitting...' : 'Submit Records'}
+            </button>
+          </div>
+        )
+      }
+    >
       <div style={{ width: '100%' }} className="flex flex-col gap-6">
         {!isSessionActive && (
           <div className="flex flex-col gap-8">
@@ -427,11 +456,10 @@ export default function TeacherAttendance() {
                     if (!slotInfo) return null
                     const isExhausted = slotInfo.remaining <= 0
                     return (
-                      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium ${
-                        isExhausted
-                          ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
-                          : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
-                      }`}>
+                      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium ${isExhausted
+                        ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
+                        : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                        }`}>
                         <span className={`inline-block w-2 h-2 rounded-full ${isExhausted ? 'bg-red-500' : 'bg-emerald-500'}`} />
                         {isExhausted
                           ? `All ${slotInfo.max} session(s) used for today`
@@ -596,7 +624,7 @@ export default function TeacherAttendance() {
                             className={`w-12 h-10 rounded-xl flex items-center justify-center font-bold transition-colors border ${status === 'present'
                               ? 'bg-green-500 text-white border-green-600 shadow-md shadow-green-500/20'
                               : 'bg-gray-50 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-800'
-                            }`}
+                              }`}
                           >
                             P
                           </button>
@@ -605,7 +633,7 @@ export default function TeacherAttendance() {
                             className={`w-12 h-10 rounded-xl flex items-center justify-center font-bold transition-colors border ${status === 'absent'
                               ? 'bg-red-500 text-white border-red-600 shadow-md shadow-red-500/20'
                               : 'bg-gray-50 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-800'
-                            }`}
+                              }`}
                           >
                             A
                           </button>
@@ -614,7 +642,7 @@ export default function TeacherAttendance() {
                             className={`w-12 h-10 rounded-xl flex items-center justify-center font-bold transition-colors border ${status === 'late'
                               ? 'bg-amber-500 text-white border-amber-600 shadow-md shadow-amber-500/20'
                               : 'bg-gray-50 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 hover:border-amber-300 dark:hover:border-amber-800'
-                            }`}
+                              }`}
                           >
                             L
                           </button>
@@ -627,34 +655,6 @@ export default function TeacherAttendance() {
                 {error && (
                   <p className="text-sm text-red-500 font-medium px-2">{error}</p>
                 )}
-
-                {/* Spacer to prevent content from being hidden behind the fixed bar */}
-                <div className="h-28 sm:h-20" />
-
-                {/* Fixed submission bar — sits above BottomNav on mobile */}
-                <div className="attendance-submit-bar fixed bottom-16 md:bottom-0 right-0 bg-slate-900/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-800/80 px-4 py-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 shadow-xl shadow-black/20 z-40">
-                  <div className="flex gap-5 sm:gap-4">
-                    <div className="flex flex-col items-center sm:items-start">
-                      <span className="text-[10px] sm:text-xs text-slate-400">Present</span>
-                      <span className="text-base sm:text-lg font-bold text-green-300">{presentCount}</span>
-                    </div>
-                    <div className="flex flex-col items-center sm:items-start">
-                      <span className="text-[10px] sm:text-xs text-slate-400">Absent</span>
-                      <span className="text-base sm:text-lg font-bold text-red-300">{absentCount}</span>
-                    </div>
-                    <div className="flex flex-col items-center sm:items-start">
-                      <span className="text-[10px] sm:text-xs text-slate-400">Unmarked</span>
-                      <span className="text-base sm:text-lg font-bold text-slate-200">{unmarkedCount}</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={!allMarked || submitting}
-                    className="w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-sm sm:text-base font-semibold transition-colors disabled:cursor-not-allowed shadow-lg shadow-blue-600/30 disabled:shadow-none"
-                  >
-                    {submitting ? 'Submitting...' : 'Submit Records'}
-                  </button>
-                </div>
               </>
             )}
           </div>
