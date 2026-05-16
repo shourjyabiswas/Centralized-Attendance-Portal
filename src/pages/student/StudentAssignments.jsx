@@ -163,13 +163,7 @@ export default function StudentAssignments() {
 
   return (
     <AppLayout title="Assignments">
-      <div className="flex flex-col gap-6 w-full max-w-6xl mx-auto p-2">
-        <div className="bg-gray-50 dark:bg-gray-800/60 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700/50">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Course Assignments</h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            Read-only view: teachers can set assignment-specific attendance thresholds for opening questions and submitting answers.
-          </p>
-        </div>
+      <div className="flex flex-col gap-4 w-full max-w-6xl mx-auto px-2 py-0">
 
         {loading ? (
           <div className="flex justify-center py-24">
