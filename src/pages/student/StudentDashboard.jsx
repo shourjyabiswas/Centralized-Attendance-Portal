@@ -470,14 +470,14 @@ export default function StudentDashboard() {
               <div className="lg:col-span-7 space-y-6">
 
                 {/* Subject Breakdown - Lectures */}
-                {subjects.filter(s => !s.isLab).length > 0 && (
+                {subjects.filter(s => !s.isLab && s.total > 0).length > 0 && (
                   <motion.div 
                     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
                     className="rounded-[2rem] bg-[#12121a] border border-white/5 p-6"
                   >
                     <h2 className="text-lg font-bold mb-4">Lecture Breakdown</h2>
                     <div className="space-y-3">
-                      {subjects.filter(s => !s.isLab).map((sub, i) => (
+                      {subjects.filter(s => !s.isLab && s.total > 0).map((sub, i) => (
                         <SubjectRow key={sub.id || i} subject={sub} index={i} onClick={() => navigate(`/attendance/heatmap/lecture/${encodeURIComponent(sub.code)}`)} />
                       ))}
                     </div>
@@ -485,14 +485,14 @@ export default function StudentDashboard() {
                 )}
 
                 {/* Subject Breakdown - Labs */}
-                {subjects.filter(s => s.isLab).length > 0 && (
+                {subjects.filter(s => s.isLab && s.total > 0).length > 0 && (
                   <motion.div 
                     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
                     className="rounded-[2rem] bg-[#12121a] border border-white/5 p-6"
                   >
                     <h2 className="text-lg font-bold mb-4">Lab Breakdown</h2>
                     <div className="space-y-3">
-                      {subjects.filter(s => s.isLab).map((sub, i) => (
+                      {subjects.filter(s => s.isLab && s.total > 0).map((sub, i) => (
                         <SubjectRow key={sub.id || i} subject={sub} index={i} onClick={() => navigate(`/attendance/heatmap/lab/${encodeURIComponent(sub.code)}`)} />
                       ))}
                     </div>

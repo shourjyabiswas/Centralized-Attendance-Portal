@@ -826,13 +826,21 @@ router.post('/sessions/:id/records', async (req, res) => {
 
     const { data: session } = await req.supabase
       .from('attendance_sessions')
-      .select('teacher_id')
+      .select('teacher_id, created_at')
       .eq('id', sessionId)
       .single()
 
     if (!session) return res.status(404).json({ error: 'Session not found' })
     if (session.teacher_id !== teacherProfile.id) {
       return res.status(403).json({ error: 'You do not own this session' })
+    }
+
+    // 24-hour edit limit check
+    if (session.created_at) {
+      const hoursSinceCreation = (Date.now() - new Date(session.created_at).getTime()) / (1000 * 60 * 60)
+      if (hoursSinceCreation > 24) {
+        return res.status(403).json({ error: 'Editing attendance is only allowed within 24 hours of session creation' })
+      }
     }
 
     const records = Object.entries(attendanceMap).map(([studentId, status]) => ({
@@ -1024,7 +1032,8 @@ router.get('/sections/:id/sessions', async (req, res) => {
 // GET /api/v1/attendance/sessions/:id/records — full roster for a session
 router.get('/sessions/:id/records', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const db = supabaseAdmin || req.supabase
+    const { data, error } = await db
       .from('attendance_records')
       .select(`
         *,

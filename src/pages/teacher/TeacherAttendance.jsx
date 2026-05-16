@@ -122,6 +122,11 @@ export default function TeacherAttendance() {
   // Today's scheduled section IDs — used to filter the dropdown
   const [todaySectionIds, setTodaySectionIds] = useState(null) // null = loading
 
+  const [viewSession, setViewSession] = useState(null)
+  const [viewSessionRecords, setViewSessionRecords] = useState([])
+  const [loadingViewRecords, setLoadingViewRecords] = useState(false)
+  const [editSessionId, setEditSessionId] = useState(null)
+
   useEffect(() => {
     async function loadSectionsAndHistory() {
       setLoadingSections(true)
@@ -293,6 +298,54 @@ export default function TeacherAttendance() {
     setStudents([])
     setAttendance({})
     setError(null)
+    setEditSessionId(null)
+  }
+
+  async function handleViewSession(session, section) {
+    setViewSession({ ...session, section })
+    setLoadingViewRecords(true)
+    const res = await getRecordsForSession(session.id)
+    if (!res.error) {
+      setViewSessionRecords(res.data || [])
+    }
+    setLoadingViewRecords(false)
+  }
+
+  function closeViewModal() {
+    setViewSession(null)
+    setViewSessionRecords([])
+  }
+
+  async function handleEditSession(session, section) {
+    setActiveSection(section)
+    setEditSessionId(session.id)
+    setIsSessionActive(true)
+    setLoadingStudents(true)
+    setAttendance({})
+    setError(null)
+    setSelectedTimeSlot(session.time_slot || '')
+
+    const studentsRes = await getStudentsInSection(section.class_section_id)
+    if (studentsRes.error) {
+      setError(studentsRes.error.message || 'Failed to load students.')
+      setStudents([])
+      setLoadingStudents(false)
+      return
+    }
+    setStudents(studentsRes.data || [])
+
+    const recordsRes = await getRecordsForSession(session.id)
+    if (!recordsRes.error && recordsRes.data) {
+      const initialAttendance = {}
+      recordsRes.data.forEach(r => {
+        if (r.studentId) {
+          initialAttendance[r.studentId] = r.status
+        }
+      })
+      setAttendance(initialAttendance)
+    }
+
+    setLoadingStudents(false)
   }
 
   function toggle(studentId, status) {
@@ -308,6 +361,8 @@ export default function TeacherAttendance() {
   }
 
   async function resolveSessionIdForSubmit() {
+    if (editSessionId) return editSessionId;
+
     const createRes = await createAttendanceSession(activeSection.class_section_id, 'regular', selectedTimeSlot)
 
     if (!createRes.error && createRes.data?.id) {
@@ -338,6 +393,7 @@ export default function TeacherAttendance() {
       setSelectedSectionId('')
       setAttendance({})
       setStudents([])
+      setEditSessionId(null)
     } catch (err) {
       setError(err?.message || 'Something went wrong while submitting attendance.')
     } finally {
@@ -529,13 +585,38 @@ export default function TeacherAttendance() {
                                 </p>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <p className={`text-sm font-bold ${session.isBunk ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-                                {session.present} / {session.total}
-                              </p>
-                              <p className={`text-xs font-medium mt-0.5 ${session.isBunk ? 'text-red-500/80 dark:text-red-500/70' : 'text-green-500'}`}>
-                                Present
-                              </p>
+                            <div className="text-right flex items-center justify-end gap-4">
+                              <div className="text-right hidden sm:block">
+                                <p className={`text-sm font-bold ${session.isBunk ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                                  {session.present} / {session.total}
+                                </p>
+                                <p className={`text-xs font-medium mt-0.5 ${session.isBunk ? 'text-red-500/80 dark:text-red-500/70' : 'text-green-500'}`}>
+                                  Present
+                                </p>
+                              </div>
+                              <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
+                                <button
+                                  onClick={() => handleViewSession(session, group.section)}
+                                  className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg dark:text-blue-400 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 transition-colors"
+                                >
+                                  View
+                                </button>
+                                {(() => {
+                                  const hoursSinceCreation = session.created_at ? (Date.now() - new Date(session.created_at).getTime()) / (1000 * 60 * 60) : null;
+                                  const isEditable = hoursSinceCreation === null || hoursSinceCreation <= 24;
+                                  if (isEditable) {
+                                    return (
+                                      <button
+                                        onClick={() => handleEditSession(session, group.section)}
+                                        className="px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg dark:text-amber-400 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 transition-colors"
+                                      >
+                                        Edit
+                                      </button>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -660,6 +741,69 @@ export default function TeacherAttendance() {
           </div>
         )}
       </div>
+
+      {viewSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Session Details
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {formatSessionDate(viewSession)} · {viewSession.time_slot && !/^session\s+\d+$/i.test(String(viewSession.time_slot).trim()) ? viewSession.time_slot : `Session ${viewSession.session_number || viewSession.id?.slice(0, 8)}`}
+                </p>
+              </div>
+              <button
+                onClick={closeViewModal}
+                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto flex-1">
+              {loadingViewRecords ? (
+                <div className="flex justify-center py-10">
+                  <SpiralLoader />
+                </div>
+              ) : viewSessionRecords.length === 0 ? (
+                <p className="text-sm text-center text-gray-500 py-10">No records found for this session.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {viewSessionRecords.map(record => (
+                    <div key={record.studentId || record.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{record.fullName}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{record.rollNumber}</p>
+                      </div>
+                      <div>
+                        {record.status === 'present' && (
+                          <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold rounded-lg border border-green-200 dark:border-green-800/30">
+                            Present
+                          </span>
+                        )}
+                        {record.status === 'absent' && (
+                          <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-bold rounded-lg border border-red-200 dark:border-red-800/30">
+                            Absent
+                          </span>
+                        )}
+                        {record.status === 'late' && (
+                          <span className="px-3 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold rounded-lg border border-amber-200 dark:border-amber-800/30">
+                            Late
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }
