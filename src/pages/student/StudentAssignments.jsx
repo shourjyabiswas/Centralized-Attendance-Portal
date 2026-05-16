@@ -90,6 +90,24 @@ export default function StudentAssignments() {
     )
   }, [archivedAssignments])
 
+  function normalizeDifficultyValue(value) {
+    const normalized = String(value || '').trim().toLowerCase()
+    if (normalized === 'locq') return 'locq'
+    if (normalized === 'iocq') return 'iocq'
+    if (normalized === 'hocq') return 'hocq'
+    if (normalized === 'easy') return 'locq'
+    if (normalized === 'medium' || normalized === 'intermediate') return 'iocq'
+    if (normalized === 'hard') return 'hocq'
+    return 'iocq'
+  }
+
+  function getDifficultyLabel(value) {
+    const normalized = normalizeDifficultyValue(value)
+    if (normalized === 'locq') return 'LOCQ'
+    if (normalized === 'hocq') return 'HOCQ'
+    return 'IOCQ'
+  }
+
   function toggleQuestions(assignmentId) {
     setExpanded((prev) => ({
       ...prev,
@@ -341,7 +359,7 @@ export default function StudentAssignments() {
                                             )}
                                             {q.difficulty && (
                                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300">
-                                                {q.difficulty}
+                                                {getDifficultyLabel(q.difficulty)}
                                               </span>
                                             )}
                                           </div>
