@@ -290,6 +290,7 @@ async function getEffectiveEnrollmentsForStudent(supabase, studentProfile) {
       .select('id')
       .eq('year_of_study', studentYear)
       .eq('section', studentProfile.section)
+      .eq('department', studentProfile.department)
       .eq('is_active', true)
       .maybeSingle(),
     Promise.resolve(
@@ -560,6 +561,7 @@ async function getMaxSessionsForDay(supabase, classSectionId, dayName) {
 
   if (yearNum) routineQuery = routineQuery.eq('year_of_study', yearNum)
   if (section.section) routineQuery = routineQuery.eq('section', section.section)
+  if (section.department) routineQuery = routineQuery.eq('department', section.department)
 
   const { data: activeRoutine } = await routineQuery.maybeSingle()
 
