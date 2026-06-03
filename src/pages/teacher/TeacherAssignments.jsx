@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../../components/shared/AppLayout'
 import { getMyAssignedSections } from '../../lib/profile'
 import {
@@ -16,7 +16,9 @@ import { useToast } from '../../components/shared/ToastProvider'
 
 export default function TeacherAssignments() {
   const QUESTION_SELECTION_KEY = 'teacher-assignment-question-selection'
+  const ASSIGNMENT_DRAFT_KEY = 'teacher-assignment-draft'
   const { addToast } = useToast()
+  const [searchParams] = useSearchParams()
   const [sections, setSections] = useState([])
   const [selectedSection, setSelectedSection] = useState('')
   const [assignments, setAssignments] = useState([])
@@ -69,10 +71,18 @@ export default function TeacherAssignments() {
   }, [])
 
   useEffect(() => {
+    const sectionFromQuery = searchParams.get('sectionId') || ''
+    if (sectionFromQuery && sectionFromQuery !== selectedSection) {
+      setSelectedSection(sectionFromQuery)
+    }
+  }, [searchParams, selectedSection])
+
+  useEffect(() => {
     if (!selectedSection) return
     loadAssignments()
     loadQuestions()
     resetBulkUpload()
+    restoreDraft(selectedSection)
   }, [selectedSection])
 
   function isPastDeadline(assignment) {
@@ -200,9 +210,45 @@ export default function TeacherAssignments() {
     }
   }
 
+  function persistDraft(sectionId) {
+    try {
+      sessionStorage.setItem(ASSIGNMENT_DRAFT_KEY, JSON.stringify({
+        sectionId,
+        showForm,
+        formTitle,
+        formDesc,
+        formDue,
+        formCount,
+        formAttendanceThreshold,
+      }))
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function restoreDraft(sectionId) {
+    if (!sectionId) return
+    if (searchParams.get('restoreDraft') !== '1') return
+    try {
+      const raw = sessionStorage.getItem(ASSIGNMENT_DRAFT_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (parsed?.sectionId !== sectionId) return
+      setShowForm(Boolean(parsed.showForm) || true)
+      setFormTitle(parsed.formTitle || '')
+      setFormDesc(parsed.formDesc || '')
+      setFormDue(parsed.formDue || '')
+      setFormCount(parsed.formCount ?? 5)
+      setFormAttendanceThreshold(parsed.formAttendanceThreshold ?? 75)
+    } catch {
+      // ignore storage errors
+    }
+  }
+
   function handleManageQuestions() {
     if (!selectedSection) return
     persistSelection(selectedSection)
+    persistDraft(selectedSection)
     navigate(`/assignments/questions?sectionId=${encodeURIComponent(selectedSection)}`)
   }
 
@@ -326,6 +372,7 @@ export default function TeacherAssignments() {
     setFormTitle(''); setFormDesc(''); setFormDue(''); setFormCount(5); setFormAttendanceThreshold(75)
     setShowForm(false)
     setSubmitting(false)
+    sessionStorage.removeItem(ASSIGNMENT_DRAFT_KEY)
     await loadAssignments()
     addToast({ type: 'success', title: 'Assignment created', message: 'Assignment published successfully.' })
   }
