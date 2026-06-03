@@ -123,7 +123,7 @@ export default function TeacherQuestionSelector() {
       addToast({ type: 'error', title: 'Save failed', message: 'Unable to save the selection. Try again.' })
       // ignore storage errors
     }
-    navigate('/assignments')
+    navigate(`/assignments?sectionId=${encodeURIComponent(sectionId)}&restoreDraft=1`)
   }
 
   return (
